@@ -49,6 +49,10 @@ dependencies:
   # Haptic feedback helper
   vibration: ^3.2.1
 
+  # Real-time menu availability updates via Socket.io
+  # Used for §1.3 live is_available badge changes pushed from backend
+  socket_io_client: ^3.1.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
