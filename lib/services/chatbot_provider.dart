@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/menu_models.dart';
-import '../services/menu_service.dart';
+import '../mock/mock_data.dart';
+import 'menu_service.dart';
 
 class ChatbotProvider extends ChangeNotifier {
   final List<ChatMessage> _messages = [];
@@ -14,7 +15,7 @@ class ChatbotProvider extends ChangeNotifier {
   Future<void> loadHistory() async {
     if (_historyLoaded) return;
     _historyLoaded = true;
-
+    if (kUseMock) return;
     final history = await MenuService.instance.fetchChatHistory();
     if (history != null && history.messages.isNotEmpty) {
       _messages.insertAll(0, history.messages);
@@ -25,29 +26,27 @@ class ChatbotProvider extends ChangeNotifier {
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty || _isSending) return;
 
-    final userMsg = ChatMessage.user(text.trim());
-    _messages.add(userMsg);
-
-    final loadingMsg = ChatMessage.botLoading();
-    _messages.add(loadingMsg);
-
+    _messages.add(ChatMessage.user(text.trim()));
+    _messages.add(ChatMessage.botLoading());
     _isSending = true;
     notifyListeners();
 
     try {
-      final reply = await MenuService.instance.sendChatMessage(text.trim());
-      _messages.removeLast(); // remove loading
+      String reply;
+      if (kUseMock) {
+        await Future.delayed(const Duration(milliseconds: 1200));
+        reply = getMockBotReply(text.trim());
+      } else {
+        reply = await MenuService.instance.sendChatMessage(text.trim());
+      }
+      _messages.removeLast();
       _messages.add(ChatMessage.bot(reply));
     } on MenuApiException catch (e) {
       _messages.removeLast();
-      _messages.add(ChatMessage.bot(
-        'Sorry, I had trouble responding. ${e.message}',
-      ));
+      _messages.add(ChatMessage.bot('Sorry, I had trouble responding. ${e.message}'));
     } catch (_) {
       _messages.removeLast();
-      _messages.add(ChatMessage.bot(
-        'Something went wrong. Please try again.',
-      ));
+      _messages.add(ChatMessage.bot('Something went wrong. Please try again.'));
     } finally {
       _isSending = false;
       notifyListeners();

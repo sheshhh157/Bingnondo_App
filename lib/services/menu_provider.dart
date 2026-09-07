@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/menu_models.dart';
+import '../mock/mock_data.dart';
 import 'menu_service.dart';
 import 'socket_service.dart';
 
@@ -22,7 +23,6 @@ class MenuProvider extends ChangeNotifier {
       _data?.itemsForCategory(categoryId) ?? [];
 
   MenuProvider() {
-    // Hook into Socket.io real-time events
     SocketService.instance.onMenuUpdate = updateItemAvailability;
   }
 
@@ -34,10 +34,13 @@ class MenuProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _data = await MenuService.instance.fetchMenu();
+      if (kUseMock) {
+        await _loadMockMenu();
+      } else {
+        _data = await MenuService.instance.fetchMenu();
+        await SocketService.instance.connect();
+      }
       _state = MenuLoadState.loaded;
-      // Start socket after menu is loaded so we receive live updates
-      await SocketService.instance.connect();
     } on MenuApiException catch (e) {
       _errorMessage = e.message;
       _state = MenuLoadState.error;
@@ -49,9 +52,11 @@ class MenuProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Called by Socket.io `menu_update` event — updates a single item
-  /// in-memory without a full network refetch. O(n) scan is fine for
-  /// typical cafe menu sizes (<200 items).
+  Future<void> _loadMockMenu() async {
+    await Future.delayed(const Duration(milliseconds: 900));
+    _data = MenuData.fromJson(kMockMenuData);
+  }
+
   void updateItemAvailability(int itemId, bool isAvailable) {
     if (_data == null) return;
     final updated = _data!.items.map((item) {
