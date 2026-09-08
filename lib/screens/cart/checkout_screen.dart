@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../models/cart_models.dart';
 import '../../services/cart_provider.dart';
+import '../../services/order_tracking_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import '../orders/my_orders_screen.dart';
+import '../tracking/order_tracking_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -655,7 +659,7 @@ class _OrderSummaryCard extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: Row(
               children: [
-                Container(
+                SizedBox(
                   width: 28,
                   child: Text('${item.quantity}×',
                       style: GoogleFonts.karla(
@@ -825,12 +829,27 @@ class _ConfirmationStep extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
 
           PrimaryButton(
-            label: 'TRACK MY ORDER',
+            label: 'VIEW MY ORDERS',
             onPressed: () {
-              // Clear cart and go to order tracking
+              // Clear cart and go to the orders list page
               cart.clearCart();
               Navigator.popUntil(context, (route) => route.isFirst);
-              // TODO: Navigate to order tracking screen (§1.6)
+              
+              // Navigate directly to the "My Orders" list screen
+              Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (_, anim, __) => const MyOrdersScreen(),
+                  transitionsBuilder: (_, anim, __, child) => SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 1),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+                    child: child,
+                  ),
+                  transitionDuration: const Duration(milliseconds: 400),
+                ),
+              );
             },
           ),
           const SizedBox(height: AppSpacing.sm),

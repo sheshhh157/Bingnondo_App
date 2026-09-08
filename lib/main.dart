@@ -7,6 +7,7 @@ import 'services/chatbot_provider.dart';
 import 'services/cart_provider.dart';
 import 'services/order_tracking_provider.dart';
 import 'services/support_chat_provider.dart';
+import 'services/orders_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_widgets.dart';
 import 'screens/auth/login_screen.dart';
@@ -33,6 +34,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => OrderTrackingProvider()),
         // §1.7 — support chat thread
         ChangeNotifierProvider(create: (_) => SupportChatProvider()),
+        ChangeNotifierProvider(create: (_) => OrdersProvider()),
       ],
       child: const BingnondoApp(),
     ),

@@ -10,6 +10,10 @@ import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
 import '../chatbot/chatbot_screen.dart';
 import '../cart/cart_screen.dart';
+import '../tracking/order_tracking_screen.dart';
+import '../orders/my_orders_screen.dart';
+import '../../services/order_tracking_provider.dart';
+import '../../services/orders_provider.dart';
 
 class HomeMenuScreen extends StatefulWidget {
   const HomeMenuScreen({super.key});
@@ -320,9 +324,20 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                CustomPaint(
-                    size: const Size(32, 32),
-                    painter: _MiniFabCatPainter()),
+                ClipOval(
+                  child: Image.asset(
+                    'assets/images/ndo_bot.png',
+                    width: 38,
+                    height: 38,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return CustomPaint(
+                        size: const Size(32, 32),
+                        painter: _MiniFabCatPainter(),
+                      );
+                    },
+                  ),
+                ),
                 Positioned(
                   top: 10, right: 10,
                   child: Container(
@@ -360,6 +375,25 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
           Navigator.pop(context);
           await context.read<AuthProvider>().logout();
         },
+        onMyOrders: () => _goToMyOrders(context),
+      ),
+    );
+  }
+
+  void _goToMyOrders(BuildContext context) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, anim, __) => const MyOrdersScreen(),
+        transitionsBuilder: (_, anim, __, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(
+              CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+        transitionDuration: const Duration(milliseconds: 350),
       ),
     );
   }
@@ -409,12 +443,13 @@ class _PersistentHeader extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
         AppSpacing.md,
-        safeTop + (isCollapsed ? 8 : 12),
+        safeTop + (isCollapsed ? 4 : 8),
         AppSpacing.md,
-        8,
+        4,
       ),
       height: currentHeight + safeTop,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           // ── Decorative corner marks (fade out as collapsed) ──────────────
           if (collapseRatio < 0.7) ...[
@@ -538,51 +573,56 @@ class _ExpandedBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Animated cat
-        BrandCatIcon(size: catSize),
-        const SizedBox(width: 12),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Bingnondo',
-              style: GoogleFonts.playfairDisplaySc(
-                fontSize: titleSize,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textOnDark,
-                letterSpacing: 0.3,
-              ),
-            ),
-            if (collapseRatio < 0.8) ...[
-              const SizedBox(height: 2),
+    return OverflowBox(
+      alignment: Alignment.centerLeft,
+      maxHeight: double.infinity,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Animated cat
+          BrandCatIcon(size: catSize),
+          const SizedBox(width: 12),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                'Authentic Binondo Cafe',
-                style: GoogleFonts.karla(
-                  fontSize: subSize,
-                  color: AppColors.textOnDark.withOpacity(
-                      (1 - collapseRatio * 1.2).clamp(0, 1)),
+                'Bingnondo',
+                style: GoogleFonts.playfairDisplaySc(
+                  fontSize: titleSize,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textOnDark,
                   letterSpacing: 0.3,
                 ),
               ),
+              if (collapseRatio < 0.8) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Authentic Binondo Cafe',
+                  style: GoogleFonts.karla(
+                    fontSize: subSize,
+                    color: AppColors.textOnDark.withOpacity(
+                        (1 - collapseRatio * 1.2).clamp(0, 1)),
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 6),
+              Transform.scale(
+                scale: pillScale,
+                alignment: Alignment.centerLeft,
+                child: const _OpenNowPill(),
+              ),
             ],
-            const SizedBox(height: 6),
-            Transform.scale(
-              scale: pillScale,
-              alignment: Alignment.centerLeft,
-              child: const _OpenNowPill(),
-            ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-// Collapsed layout — row: cat + title + subtitle (inline) + pill
+// Collapsed layout — cat left | title / subtitle / pill stacked in column
+// "Open Now" pill is ALWAYS on its own line — never overlaps the subtitle.
 class _CollapsedBrand extends StatelessWidget {
   final double catSize;
   final double titleSize;
@@ -607,7 +647,9 @@ class _CollapsedBrand extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
+              // Title
               Text(
                 'Bingnondo',
                 style: GoogleFonts.playfairDisplaySc(
@@ -615,25 +657,26 @@ class _CollapsedBrand extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: AppColors.textOnDark,
                   letterSpacing: 0.3,
+                  height: 1.1,
                 ),
               ),
-              Row(
-                children: [
-                  Text(
-                    'Authentic Binondo Cafe',
-                    style: GoogleFonts.karla(
-                      fontSize: subSize,
-                      color: AppColors.textOnDark.withOpacity(0.6),
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Transform.scale(
-                    scale: pillScale,
-                    alignment: Alignment.centerLeft,
-                    child: const _OpenNowPill(),
-                  ),
-                ],
+              const SizedBox(height: 1),
+              // Subtitle — always its own line
+              Text(
+                'Authentic Binondo Cafe',
+                style: GoogleFonts.karla(
+                  fontSize: subSize,
+                  color: AppColors.textOnDark.withOpacity(0.6),
+                  letterSpacing: 0.2,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 3),
+              // Open Now pill — always its own line, never overlapping
+              Transform.scale(
+                scale: pillScale,
+                alignment: Alignment.centerLeft,
+                child: const _OpenNowPill(),
               ),
             ],
           ),
@@ -1051,48 +1094,59 @@ class _FoodImage extends StatelessWidget {
 // ─── Profile Sheet ─────────────────────────────────────────────────────────────
 class _ProfileSheet extends StatelessWidget {
   final VoidCallback onLogout;
-  const _ProfileSheet({required this.onLogout});
+  final VoidCallback onMyOrders;
+  const _ProfileSheet({required this.onLogout, required this.onMyOrders});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
-      ),
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.xxl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Center(
-            child: Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(AppRadius.pill)),
+    return Material(
+      color: AppColors.background,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(AppRadius.pill)),
+              ),
             ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text('Account', style: AppTextStyles.display2(context)),
-          const SizedBox(height: AppSpacing.lg),
-          const ChineseDivider(),
-          const SizedBox(height: AppSpacing.md),
-          ListTile(
-            leading: const Icon(Icons.person_outline_rounded, color: AppColors.gold),
-            title: Text('Complete Profile', style: AppTextStyles.bodyLarge(context)),
-            subtitle: Text('Add your name & address',
-                style: AppTextStyles.bodySmall(context)),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings_outlined, color: AppColors.gold),
-            title: Text('Account Settings', style: AppTextStyles.bodyLarge(context)),
-            onTap: () => Navigator.pop(context),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          GoldOutlineButton(label: 'SIGN OUT', onPressed: onLogout),
-        ],
+            const SizedBox(height: AppSpacing.lg),
+            Text('Account', style: AppTextStyles.display2(context)),
+            const SizedBox(height: AppSpacing.lg),
+            const ChineseDivider(),
+            const SizedBox(height: AppSpacing.md),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined, color: AppColors.gold),
+              title: Text('My Orders', style: AppTextStyles.bodyLarge(context)),
+              subtitle: Text('Track your active order',
+                  style: AppTextStyles.bodySmall(context)),
+              onTap: () {
+                Navigator.pop(context);
+                onMyOrders();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline_rounded, color: AppColors.gold),
+              title: Text('Complete Profile', style: AppTextStyles.bodyLarge(context)),
+              subtitle: Text('Add your name & address',
+                  style: AppTextStyles.bodySmall(context)),
+              onTap: () => Navigator.pop(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined, color: AppColors.gold),
+              title: Text('Account Settings', style: AppTextStyles.bodyLarge(context)),
+              onTap: () => Navigator.pop(context),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            GoldOutlineButton(label: 'SIGN OUT', onPressed: onLogout),
+          ],
+        ),
       ),
     );
   }
@@ -1280,6 +1334,21 @@ class _MiniFabCatPainter extends CustomPainter {
     final e = Paint()..color = AppColors.primaryDark..strokeWidth = 1.5..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
     canvas.drawLine(const Offset(13,14), const Offset(13,17), e);
     canvas.drawLine(const Offset(19,14), const Offset(19,17), e);
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+class _LanternDotPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawOval(
+      Rect.fromLTWH(size.width * 0.1, size.height * 0.2,
+          size.width * 0.8, size.height * 0.6),
+      Paint()
+        ..color = AppColors.gold
+        ..style = PaintingStyle.fill,
+    );
   }
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;

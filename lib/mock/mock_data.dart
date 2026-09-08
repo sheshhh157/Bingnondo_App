@@ -196,3 +196,49 @@ String getMockBotReply(String message) {
   }
   return "Hmm, I'm not sure about that. Try asking about our menu, bestsellers, hours, or delivery!";
 }
+
+// Add this to your existing mock_data.dart
+// kMockOrderList — list of orders for My Orders screen (GET /api/orders)
+
+const List<Map<String, dynamic>> kMockOrderList = [
+  // Active order — currently being prepared
+  {
+    'id': 1001,
+    'order_number': 'BNG-20260907-0042',
+    'status': 'preparing',
+    'total_amount': 330.00,
+    'item_count': 4,
+    'payment_method': 'gcash',
+    'created_at': '2026-09-07T10:30:00.000Z',
+  },
+  // Past order — completed
+  {
+    'id': 998,
+    'order_number': 'BNG-20260905-0039',
+    'status': 'completed',
+    'total_amount': 245.00,
+    'item_count': 3,
+    'payment_method': 'cod',
+    'created_at': '2026-09-05T12:15:00.000Z',
+  },
+  // Past order — completed
+  {
+    'id': 991,
+    'order_number': 'BNG-20260901-0031',
+    'status': 'completed',
+    'total_amount': 490.00,
+    'item_count': 6,
+    'payment_method': 'gcash',
+    'created_at': '2026-09-01T18:45:00.000Z',
+  },
+  // Past order — cancelled
+  {
+    'id': 985,
+    'order_number': 'BNG-20260828-0025',
+    'status': 'cancelled',
+    'total_amount': 155.00,
+    'item_count': 1,
+    'payment_method': 'cod',
+    'created_at': '2026-08-28T09:00:00.000Z',
+  },
+];

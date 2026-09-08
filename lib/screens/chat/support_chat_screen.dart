@@ -128,7 +128,13 @@ class _SupportChatScreenState extends State<SupportChatScreen>
               shape: BoxShape.circle,
               border: Border.all(color: AppColors.gold, width: 1.5),
             ),
-            child: CustomPaint(painter: _StaffAvatarPainter()),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/ndo_bot.png',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => CustomPaint(painter: _StaffAvatarPainter()),
+              ),
+            ),
           ),
 
           const SizedBox(width: AppSpacing.sm),
@@ -532,7 +538,13 @@ class _SupportBubble extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.gold, width: 1),
               ),
-              child: CustomPaint(painter: _StaffAvatarPainter()),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/ndo_bot.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => CustomPaint(painter: _StaffAvatarPainter()),
+                ),
+              ),
             ),
           ],
 

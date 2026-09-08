@@ -23,7 +23,7 @@ class OrderTrackingScreen extends StatefulWidget {
 }
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _fadeCtrl;
   late Animation<double> _fade;
 
@@ -138,9 +138,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CustomPaint(
-                      size: const Size(14, 14),
-                      painter: _ChatIconPainter()),
+                  ClipOval(
+                    child: Image.asset(
+                      'assets/images/ndo_bot.png',
+                      width: 16,
+                      height: 16,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => CustomPaint(
+                          size: const Size(14, 14),
+                          painter: _ChatIconPainter()),
+                    ),
+                  ),
                   const SizedBox(width: 5),
                   Text(
                     'Chat',
@@ -935,14 +943,22 @@ class _ChatCta extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 color: AppColors.gold.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
-              child: CustomPaint(
-                  size: const Size(18, 18),
-                  painter: _ChatIconPainter()),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/ndo_bot.png',
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => CustomPaint(
+                      size: const Size(18, 18),
+                      painter: _ChatIconPainter()),
+                ),
+              ),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(

@@ -158,10 +158,23 @@ class OrderDetail {
 
   factory OrderDetail.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'] as List<dynamic>? ?? [];
+    
+    final statusStr = json['status'] as String? ?? 'pending';
+    OrderStatus mappedStatus;
+    switch (statusStr) {
+      case 'confirmed': mappedStatus = OrderStatus.confirmed; break;
+      case 'preparing': mappedStatus = OrderStatus.preparing; break;
+      case 'ready':     mappedStatus = OrderStatus.ready; break;
+      case 'out_for_delivery': mappedStatus = OrderStatus.outForDelivery; break;
+      case 'completed': mappedStatus = OrderStatus.completed; break;
+      case 'cancelled': mappedStatus = OrderStatus.cancelled; break;
+      default:          mappedStatus = OrderStatus.pending;
+    }
+
     return OrderDetail(
       id: json['id'] as int,
       orderNumber: json['order_number'] as String,
-      status: OrderStatusX.fromString(json['status'] as String),
+      status: mappedStatus,
       paymentMethod: json['payment_method'] as String? ?? 'cod',
       totalAmount: (json['total_amount'] as num).toDouble(),
       items: rawItems

@@ -212,7 +212,18 @@ class _ChatbotScreenState extends State<ChatbotScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(height: AppSpacing.xl),
+          const SizedBox(height: AppSpacing.md),
+
+          // Bot Avatar Image
+          Image.asset(
+            'assets/images/ndo_bot.png',
+            width: 100,
+            height: 100,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+
+          const SizedBox(height: AppSpacing.md),
 
           // Decorative lanterns
           Row(
