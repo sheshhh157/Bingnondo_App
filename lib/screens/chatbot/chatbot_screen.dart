@@ -145,8 +145,16 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.gold, width: 1.5),
               ),
-              child: CustomPaint(
-                painter: _BotAvatarPainter(),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/ndo_bot.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return CustomPaint(
+                      painter: _BotAvatarPainter(),
+                    );
+                  },
+                ),
               ),
             ),
 
@@ -461,7 +469,15 @@ class _ChatBubble extends StatelessWidget {
                 shape: BoxShape.circle,
                 border: Border.all(color: AppColors.gold, width: 1),
               ),
-              child: CustomPaint(painter: _BotAvatarPainter()),
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/images/ndo_bot.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return CustomPaint(painter: _BotAvatarPainter());
+                  },
+                ),
+              ),
             ),
           ],
 
