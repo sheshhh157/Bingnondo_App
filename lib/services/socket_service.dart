@@ -7,13 +7,10 @@ const String _wsBaseUrl = String.fromEnvironment(
   defaultValue: 'http://10.0.2.2:3000',
 );
 
-// Callback type for menu item availability changes
 typedef MenuUpdateCallback = void Function(int itemId, bool isAvailable);
+typedef OrderStatusCallback = void Function(int orderId, String newStatus);
+typedef SupportMessageCallback = void Function(Map<String, dynamic> data);
 
-/// Manages the Socket.io connection for real-time events.
-/// Currently handles:
-///   - `menu_update`  → fired by backend when a menu item's availability changes
-///   - `connect_error` → logs auth failures without crashing
 class SocketService {
   SocketService._();
   static final SocketService instance = SocketService._();
@@ -23,11 +20,13 @@ class SocketService {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
+  // Registered callbacks
   MenuUpdateCallback? onMenuUpdate;
+  OrderStatusCallback? onOrderStatusUpdate;
+  SupportMessageCallback? onSupportMessage;
 
   bool get isConnected => _socket?.connected ?? false;
 
-  /// Call once after login — wires up the socket with the stored access token.
   Future<void> connect() async {
     if (_socket?.connected == true) return;
 
@@ -44,10 +43,11 @@ class SocketService {
 
     _socket!
       ..onConnect((_) {
-        debugPrint('[Socket] Connected to $_wsBaseUrl');
+        debugPrint('[Socket] Connected');
       })
+
+    // §1.3 — menu item availability changes
       ..on('menu_update', (data) {
-        // Expected payload: { item_id: int, is_available: bool }
         try {
           final itemId = data['item_id'] as int;
           final isAvailable = data['is_available'] as bool;
@@ -56,12 +56,29 @@ class SocketService {
           debugPrint('[Socket] menu_update parse error: $e');
         }
       })
-      ..onConnectError((e) {
-        debugPrint('[Socket] Connection error: $e');
+
+    // §1.6 — order status changes (pending → confirmed → preparing → ...)
+      ..on('order_status_update', (data) {
+        try {
+          final orderId = data['order_id'] as int;
+          final status = data['status'] as String;
+          onOrderStatusUpdate?.call(orderId, status);
+        } catch (e) {
+          debugPrint('[Socket] order_status_update parse error: $e');
+        }
       })
-      ..onDisconnect((_) {
-        debugPrint('[Socket] Disconnected');
-      });
+
+    // §1.7 — incoming staff message in support chat
+      ..on('support_message', (data) {
+        try {
+          onSupportMessage?.call(data as Map<String, dynamic>);
+        } catch (e) {
+          debugPrint('[Socket] support_message parse error: $e');
+        }
+      })
+
+      ..onConnectError((e) => debugPrint('[Socket] Connect error: $e'))
+      ..onDisconnect((_) => debugPrint('[Socket] Disconnected'));
 
     _socket!.connect();
   }

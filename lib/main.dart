@@ -5,6 +5,8 @@ import 'services/auth_provider.dart';
 import 'services/menu_provider.dart';
 import 'services/chatbot_provider.dart';
 import 'services/cart_provider.dart';
+import 'services/order_tracking_provider.dart';
+import 'services/support_chat_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_widgets.dart';
 import 'screens/auth/login_screen.dart';
@@ -13,7 +15,6 @@ import 'screens/menu/home_menu_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -28,6 +29,10 @@ void main() async {
         ChangeNotifierProvider(create: (_) => MenuProvider()),
         ChangeNotifierProvider(create: (_) => ChatbotProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
+        // §1.6 — one provider per active order being tracked
+        ChangeNotifierProvider(create: (_) => OrderTrackingProvider()),
+        // §1.7 — support chat thread
+        ChangeNotifierProvider(create: (_) => SupportChatProvider()),
       ],
       child: const BingnondoApp(),
     ),
@@ -95,19 +100,13 @@ class _SplashScreenState extends State<_SplashScreen>
       backgroundColor: AppColors.primaryDark,
       body: Stack(
         children: [
-          Positioned(
-              top: 24, left: 24, child: ChineseCornerDecoration(size: 60)),
-          Positioned(
-              top: 24,
-              right: 24,
+          Positioned(top: 24, left: 24,
+              child: ChineseCornerDecoration(size: 60)),
+          Positioned(top: 24, right: 24,
               child: ChineseCornerDecoration(size: 60, flipH: true)),
-          Positioned(
-              bottom: 24,
-              left: 24,
+          Positioned(bottom: 24, left: 24,
               child: ChineseCornerDecoration(size: 60, flipV: true)),
-          Positioned(
-              bottom: 24,
-              right: 24,
+          Positioned(bottom: 24, right: 24,
               child: ChineseCornerDecoration(size: 60, flipH: true, flipV: true)),
           Center(
             child: ScaleTransition(
@@ -117,31 +116,26 @@ class _SplashScreenState extends State<_SplashScreen>
                 children: [
                   BrandCatIcon(size: 96),
                   const SizedBox(height: AppSpacing.lg),
-                  Text(
-                    'Bingnondo',
-                    style: TextStyle(
-                      fontFamily: 'Playfair Display SC',
-                      fontSize: 36,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textOnDark,
-                      letterSpacing: 2,
-                    ),
-                  ),
+                  Text('Bingnondo',
+                      style: TextStyle(
+                        fontFamily: 'Playfair Display SC',
+                        fontSize: 36,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textOnDark,
+                        letterSpacing: 2,
+                      )),
                   const SizedBox(height: 4),
-                  Text(
-                    'C A F E',
-                    style: TextStyle(
-                      fontFamily: 'Karla',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.gold,
-                      letterSpacing: 8,
-                    ),
-                  ),
+                  Text('C A F E',
+                      style: TextStyle(
+                        fontFamily: 'Karla',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.gold,
+                        letterSpacing: 8,
+                      )),
                   const SizedBox(height: AppSpacing.xl),
                   const SizedBox(
-                    width: 22,
-                    height: 22,
+                    width: 22, height: 22,
                     child: CircularProgressIndicator(
                         color: AppColors.gold, strokeWidth: 2.5),
                   ),
