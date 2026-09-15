@@ -124,9 +124,6 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              CustomPaint(
-                                  size: const Size(16, 16),
-                                  painter: _LanternSmall()),
                               const SizedBox(width: AppSpacing.sm),
                               Expanded(
                                 child: Text(
@@ -244,7 +241,6 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
               ],
             ),
           ),
-          const ChineseCornerDecoration(size: 28, flipH: true),
         ],
       ),
     );

@@ -86,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   String _mapError(ApiException e) {
     if (e.statusCode == 401) {
-      return 'Incorrect email or password.';
+      return e.message; // Use the message from the exception (more helpful for mock)
     } else if (e.statusCode == 403) {
       if (e.message.contains('suspended')) {
         return 'Account suspended. Please contact support.';
@@ -161,37 +161,37 @@ class _LoginScreenState extends State<LoginScreen>
       color: AppColors.primaryDark,
       child: Stack(
         children: [
-          // Corner decorations
-          const Positioned(top: 16, left: 16, child: ChineseCornerDecoration(size: 50)),
-          const Positioned(top: 16, right: 16, child: ChineseCornerDecoration(size: 50, flipH: true)),
-          const Positioned(bottom: 16, left: 16, child: ChineseCornerDecoration(size: 50, flipV: true)),
-          const Positioned(bottom: 16, right: 16, child: ChineseCornerDecoration(size: 50, flipH: true, flipV: true)),
-
           // Content
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                BrandCatIcon(size: 100),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'Bingnondo',
-                  style: GoogleFonts.playfairDisplaySc(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textOnDark,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Authentic Binondo Flavors\nDelivered to Your Door',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.karla(
-                    fontSize: 14,
-                    color: AppColors.textOnDark.withOpacity(0.7),
-                    height: 1.6,
-                  ),
+                BrandCatIcon(size: 80),
+                const SizedBox(width: AppSpacing.lg),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bingnondo',
+                      style: GoogleFonts.playfairDisplaySc(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textOnDark,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      'Authentic Binondo Flavors\nDelivered to Your Door',
+                      style: GoogleFonts.karla(
+                        fontSize: 14,
+                        color: AppColors.textOnDark.withOpacity(0.7),
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -217,41 +217,34 @@ class _LoginScreenState extends State<LoginScreen>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Top-left corner decoration
-          const Positioned(
-            top: -8,
-            left: -8,
-            child: ChineseCornerDecoration(size: 40),
-          ),
-          const Positioned(
-            top: -8,
-            right: -8,
-            child: ChineseCornerDecoration(size: 40, flipH: true),
-          ),
-
-          Column(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              if (!isCompact) ...[
-                BrandCatIcon(size: 72),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              Text(
-                'Bingnondo',
-                style: GoogleFonts.playfairDisplaySc(
-                  fontSize: isCompact ? 26 : 30,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textOnDark,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'The taste of Binondo, anytime.',
-                style: GoogleFonts.karla(
-                  fontSize: 13,
-                  color: AppColors.textOnDark.withOpacity(0.65),
-                  letterSpacing: 0.3,
-                ),
+              BrandCatIcon(size: isCompact ? 50 : 64),
+              const SizedBox(width: AppSpacing.md),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Bingnondo',
+                    style: GoogleFonts.playfairDisplaySc(
+                      fontSize: isCompact ? 26 : 30,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textOnDark,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'The taste of Binondo, anytime.',
+                    style: GoogleFonts.karla(
+                      fontSize: 13,
+                      color: AppColors.textOnDark.withOpacity(0.65),
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

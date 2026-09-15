@@ -163,7 +163,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
             ),
           ),
           const SizedBox(width: 8),
-          const ChineseCornerDecoration(size: 28, flipH: true),
         ],
       ),
     );
@@ -393,14 +392,6 @@ class _StatusHeroCard extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // Corner decorations
-          const Positioned(
-              top: 0, left: 0, child: ChineseCornerDecoration(size: 36)),
-          const Positioned(
-              top: 0,
-              right: 0,
-              child: ChineseCornerDecoration(size: 36, flipH: true)),
-
           Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [

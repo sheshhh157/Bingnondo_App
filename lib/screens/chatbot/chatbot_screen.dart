@@ -196,9 +196,6 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                 ],
               ),
             ),
-
-            // Corner decorations
-            const ChineseCornerDecoration(size: 28),
           ],
         ),
       ),
@@ -215,32 +212,22 @@ class _ChatbotScreenState extends State<ChatbotScreen>
           const SizedBox(height: AppSpacing.md),
 
           // Bot Avatar Image
-          Image.asset(
-            'assets/images/ndo_bot.png',
-            width: 100,
-            height: 100,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-          ),
-
-          const SizedBox(height: AppSpacing.md),
-
-          // Decorative lanterns
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CustomPaint(
-                  size: const Size(36, 50),
-                  painter: _SingleLanternPainter(tilt: -0.12)),
-              const SizedBox(width: 12),
-              CustomPaint(
-                  size: const Size(48, 68),
-                  painter: _SingleLanternPainter(tilt: 0)),
-              const SizedBox(width: 12),
-              CustomPaint(
-                  size: const Size(36, 50),
-                  painter: _SingleLanternPainter(tilt: 0.12)),
-            ],
+          Container(
+            width: 110,
+            height: 110,
+            decoration: BoxDecoration(
+              color: AppColors.gold.withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.gold, width: 2),
+              boxShadow: AppShadows.goldGlow,
+            ),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/ndo_bot.png',
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
           ),
 
           const SizedBox(height: AppSpacing.lg),
@@ -338,10 +325,11 @@ class _ChatbotScreenState extends State<ChatbotScreen>
 
   Widget _buildSuggestionRow(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.sm),
       child: Wrap(
         spacing: 6,
         runSpacing: 6,
+        alignment: WrapAlignment.center,
         children: _suggestions
             .take(3)
             .map((s) => _SuggestionChip(label: s, onTap: () => _send(s)))
@@ -461,20 +449,20 @@ class _ChatBubble extends StatelessWidget {
       padding: EdgeInsets.only(
         top: AppSpacing.xs,
         bottom: AppSpacing.xs,
-        left: isUser ? 60 : 0,
-        right: isUser ? 0 : 60,
+        left: isUser ? 64 : 0,
+        right: isUser ? 0 : 64,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisAlignment:
-        isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           if (!isUser) ...[
             // Bot avatar
             Container(
-              width: 28,
-              height: 28,
-              margin: const EdgeInsets.only(right: 6, bottom: 2),
+              width: 32,
+              height: 32,
+              margin: const EdgeInsets.only(right: 8, bottom: 14),
               decoration: BoxDecoration(
                 color: AppColors.primaryDark,
                 shape: BoxShape.circle,
@@ -492,50 +480,53 @@ class _ChatBubble extends StatelessWidget {
             ),
           ],
 
-          // Bubble
+          // Bubble + Timestamp Column
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
-              decoration: BoxDecoration(
-                color: isUser ? AppColors.primary : AppColors.card,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(AppRadius.lg),
-                  topRight: const Radius.circular(AppRadius.lg),
-                  bottomLeft: Radius.circular(isUser ? AppRadius.lg : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : AppRadius.lg),
+            child: Column(
+              crossAxisAlignment:
+                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+                  decoration: BoxDecoration(
+                    color: isUser ? AppColors.primary : AppColors.card,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(AppRadius.lg),
+                      topRight: const Radius.circular(AppRadius.lg),
+                      bottomLeft: Radius.circular(isUser ? AppRadius.lg : 4),
+                      bottomRight: Radius.circular(isUser ? 4 : AppRadius.lg),
+                    ),
+                    boxShadow: AppShadows.card,
+                    border: isUser
+                        ? null
+                        : Border.all(color: AppColors.border, width: 1),
+                  ),
+                  child: message.isLoading
+                      ? _TypingIndicator()
+                      : Text(
+                          message.content,
+                          style: GoogleFonts.karla(
+                            fontSize: 14,
+                            color: isUser
+                                ? AppColors.textOnDark
+                                : AppColors.textPrimary,
+                            height: 1.5,
+                          ),
+                        ),
                 ),
-                boxShadow: AppShadows.card,
-                border: isUser
-                    ? null
-                    : Border.all(color: AppColors.border, width: 1),
-              ),
-              child: message.isLoading
-                  ? _TypingIndicator()
-                  : Text(
-                message.content,
-                style: GoogleFonts.karla(
-                  fontSize: 14,
-                  color: isUser
-                      ? AppColors.textOnDark
-                      : AppColors.textPrimary,
-                  height: 1.5,
+                const SizedBox(height: 2),
+                Padding(
+                  padding: EdgeInsets.only(
+                      left: isUser ? 0 : 4, right: isUser ? 4 : 0),
+                  child: Text(
+                    _formatTime(message.timestamp),
+                    style: AppTextStyles.caption(context).copyWith(fontSize: 10),
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-
-          if (isUser) ...[
-            const SizedBox(width: 6),
-            // Timestamp dot
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                _formatTime(message.timestamp),
-                style: AppTextStyles.caption(context),
-              ),
-            ),
-          ],
         ],
       ),
     );

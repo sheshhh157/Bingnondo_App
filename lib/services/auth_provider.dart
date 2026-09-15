@@ -66,14 +66,20 @@ class AuthProvider extends ChangeNotifier {
     // Simulate network delay
     await Future.delayed(const Duration(milliseconds: 800));
 
-    if (email.trim().toLowerCase() == kMockEmail &&
-        password == kMockPassword) {
+    final inputEmail = email.trim().toLowerCase();
+    final inputPassword = password.trim(); // Trim password too for mock convenience
+    
+    final targetEmail = kMockEmail.trim().toLowerCase();
+    final targetPassword = kMockPassword.trim();
+
+    if ((inputEmail == targetEmail || inputEmail == '1234567890') &&
+        inputPassword == targetPassword) {
       _user = CustomerUser.fromJson(kMockUser);
       _status = AuthStatus.authenticated;
       notifyListeners();
     } else {
       throw const ApiException(
-        'Incorrect email or password. Use test@bingnondo.com / Test1234',
+        'Invalid credentials. For testing, use:\nEmail: test@bingnondo.com\nPassword: Test1234',
         statusCode: 401,
       );
     }

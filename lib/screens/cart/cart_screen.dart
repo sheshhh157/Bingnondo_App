@@ -205,7 +205,6 @@ class _CartScreenState extends State<CartScreen>
                 ),
               ),
             ),
-          const ChineseCornerDecoration(size: 28, flipH: true),
         ],
       ),
     );

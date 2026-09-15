@@ -198,9 +198,6 @@ class _SupportChatScreenState extends State<SupportChatScreen>
                 ),
               ),
             ),
-
-          const SizedBox(width: 4),
-          const ChineseCornerDecoration(size: 28, flipH: true),
         ],
       ),
     );

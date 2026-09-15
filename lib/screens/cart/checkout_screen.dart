@@ -112,7 +112,6 @@ class _CheckoutScreenState extends State<CheckoutScreen>
               ),
             ),
           ),
-          const ChineseCornerDecoration(size: 28, flipH: true),
         ],
       ),
     );

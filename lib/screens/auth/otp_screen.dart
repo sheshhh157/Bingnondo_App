@@ -241,9 +241,6 @@ class _OtpScreenState extends State<OtpScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Lantern illustration
-          _buildLanternIllustration(isCompact),
-
           SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
 
           Text(

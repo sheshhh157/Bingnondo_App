@@ -200,37 +200,38 @@ class _SignUpScreenState extends State<SignUpScreen>
       color: AppColors.primaryDark,
       child: Stack(
         children: [
-          const Positioned(top: 16, left: 16, child: ChineseCornerDecoration(size: 50)),
-          const Positioned(top: 16, right: 16, child: ChineseCornerDecoration(size: 50, flipH: true)),
-          const Positioned(bottom: 16, left: 16, child: ChineseCornerDecoration(size: 50, flipV: true)),
-          const Positioned(bottom: 16, right: 16, child: ChineseCornerDecoration(size: 50, flipH: true, flipV: true)),
-
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                BrandCatIcon(size: 96),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'Join Bingnondo',
-                  style: GoogleFonts.playfairDisplaySc(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textOnDark,
-                  ),
+                BrandCatIcon(size: 80),
+                const SizedBox(width: AppSpacing.lg),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Join Bingnondo',
+                      style: GoogleFonts.playfairDisplaySc(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textOnDark,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Create your account and\nstart ordering in minutes.',
+                      style: GoogleFonts.karla(
+                        fontSize: 14,
+                        color: AppColors.textOnDark.withOpacity(0.65),
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    _buildProgressDots(0),
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Create your account and\nstart ordering in minutes.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.karla(
-                    fontSize: 14,
-                    color: AppColors.textOnDark.withOpacity(0.65),
-                    height: 1.6,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-                _buildProgressDots(0),
               ],
             ),
           ),
@@ -252,26 +253,28 @@ class _SignUpScreenState extends State<SignUpScreen>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          const Positioned(top: -4, left: -4, child: ChineseCornerDecoration(size: 36)),
-          const Positioned(top: -4, right: -4, child: ChineseCornerDecoration(size: 36, flipH: true)),
-
-          Column(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              if (!isCompact) ...[
-                BrandCatIcon(size: 64),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              Text(
-                'Create Account',
-                style: GoogleFonts.playfairDisplaySc(
-                  fontSize: isCompact ? 22 : 26,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textOnDark,
-                ),
+              BrandCatIcon(size: isCompact ? 48 : 64),
+              const SizedBox(width: AppSpacing.md),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Create Account',
+                    style: GoogleFonts.playfairDisplaySc(
+                      fontSize: isCompact ? 22 : 26,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textOnDark,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs + 2),
+                  // Progress indicator — step 1 of 2
+                  _buildProgressDots(0),
+                ],
               ),
-              const SizedBox(height: AppSpacing.xs + 2),
-              // Progress indicator — step 1 of 2
-              _buildProgressDots(0),
             ],
           ),
         ],
@@ -556,10 +559,6 @@ class _SignUpScreenState extends State<SignUpScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CustomPaint(
-            size: const Size(16, 16),
-            painter: _LanternPainter(),
-          ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(

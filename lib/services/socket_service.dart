@@ -7,9 +7,10 @@ const String _wsBaseUrl = String.fromEnvironment(
   defaultValue: 'http://10.0.2.2:3000',
 );
 
-typedef MenuUpdateCallback = void Function(int itemId, bool isAvailable);
-typedef OrderStatusCallback = void Function(int orderId, String newStatus);
-typedef SupportMessageCallback = void Function(Map<String, dynamic> data);
+typedef MenuUpdateCallback       = void Function(int itemId, bool isAvailable);
+typedef OrderStatusCallback      = void Function(int orderId, String newStatus);
+typedef SupportMessageCallback   = void Function(Map<String, dynamic> data);
+typedef NewNotificationCallback  = void Function(Map<String, dynamic> data);
 
 class SocketService {
   SocketService._();
@@ -21,9 +22,10 @@ class SocketService {
   );
 
   // Registered callbacks
-  MenuUpdateCallback? onMenuUpdate;
-  OrderStatusCallback? onOrderStatusUpdate;
-  SupportMessageCallback? onSupportMessage;
+  MenuUpdateCallback?       onMenuUpdate;
+  OrderStatusCallback?      onOrderStatusUpdate;
+  SupportMessageCallback?   onSupportMessage;
+  NewNotificationCallback?  onNewNotification;  // §1.8
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -42,38 +44,43 @@ class SocketService {
     );
 
     _socket!
-      ..onConnect((_) {
-        debugPrint('[Socket] Connected');
-      })
+      ..onConnect((_) => debugPrint('[Socket] Connected'))
 
-    // §1.3 — menu item availability changes
+    // §1.3 — menu availability changes
       ..on('menu_update', (data) {
         try {
-          final itemId = data['item_id'] as int;
-          final isAvailable = data['is_available'] as bool;
-          onMenuUpdate?.call(itemId, isAvailable);
+          onMenuUpdate?.call(
+              data['item_id'] as int, data['is_available'] as bool);
         } catch (e) {
-          debugPrint('[Socket] menu_update parse error: $e');
+          debugPrint('[Socket] menu_update error: $e');
         }
       })
 
-    // §1.6 — order status changes (pending → confirmed → preparing → ...)
+    // §1.6 — order status changes
       ..on('order_status_update', (data) {
         try {
-          final orderId = data['order_id'] as int;
-          final status = data['status'] as String;
-          onOrderStatusUpdate?.call(orderId, status);
+          onOrderStatusUpdate?.call(
+              data['order_id'] as int, data['status'] as String);
         } catch (e) {
-          debugPrint('[Socket] order_status_update parse error: $e');
+          debugPrint('[Socket] order_status_update error: $e');
         }
       })
 
-    // §1.7 — incoming staff message in support chat
+    // §1.7 — incoming staff message
       ..on('support_message', (data) {
         try {
           onSupportMessage?.call(data as Map<String, dynamic>);
         } catch (e) {
-          debugPrint('[Socket] support_message parse error: $e');
+          debugPrint('[Socket] support_message error: $e');
+        }
+      })
+
+    // §1.8 — push notification to in-app notification center
+      ..on('new_notification', (data) {
+        try {
+          onNewNotification?.call(data as Map<String, dynamic>);
+        } catch (e) {
+          debugPrint('[Socket] new_notification error: $e');
         }
       })
 

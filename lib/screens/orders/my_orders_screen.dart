@@ -134,7 +134,6 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
                   : () => provider.refresh(),
             ),
           ),
-          const ChineseCornerDecoration(size: 28, flipH: true),
         ],
       ),
     );
