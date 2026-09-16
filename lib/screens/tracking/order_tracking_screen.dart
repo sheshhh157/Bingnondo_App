@@ -27,9 +27,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   late AnimationController _fadeCtrl;
   late Animation<double> _fade;
 
-  // Pulse for the active status dot
   late AnimationController _pulseCtrl;
   late Animation<double> _pulse;
+
+  // Steam animation for "Preparing" hero icon
+  late AnimationController _steamCtrl;
+  late Animation<double> _steam;
 
   @override
   void initState() {
@@ -46,6 +49,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     _pulse = Tween<double>(begin: 0.6, end: 1.0)
         .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
+    _steamCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1400))
+      ..repeat();
+    _steam = CurvedAnimation(parent: _steamCtrl, curve: Curves.easeInOut);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<OrderTrackingProvider>().loadOrder(widget.orderId);
     });
@@ -55,6 +63,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   void dispose() {
     _fadeCtrl.dispose();
     _pulseCtrl.dispose();
+    _steamCtrl.dispose();
     super.dispose();
   }
 
@@ -123,7 +132,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               ],
             ),
           ),
-          // Chat with staff shortcut
+          // Chat shortcut
           GestureDetector(
             onTap: () => _openChat(context, tracking.order?.id),
             child: Container(
@@ -138,17 +147,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ClipOval(
-                    child: Image.asset(
-                      'assets/images/ndo_bot.png',
-                      width: 16,
-                      height: 16,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => CustomPaint(
-                          size: const Size(14, 14),
-                          painter: _ChatIconPainter()),
-                    ),
-                  ),
+                  CustomPaint(
+                      size: const Size(14, 14),
+                      painter: _ChatIconPainter()),
                   const SizedBox(width: 5),
                   Text(
                     'Chat',
@@ -197,12 +198,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Status hero card
-                  _StatusHeroCard(order: order, pulse: _pulse),
+                  // ── Option C: Split hero (compact) ───────────────────────
+                  _StatusHeroCard(
+                    order: order,
+                    pulse: _pulse,
+                    steam: _steam,
+                  ),
 
                   const SizedBox(height: AppSpacing.lg),
 
-                  // Timeline
+                  // ── Option Z: Bigger vertical timeline ───────────────────
                   if (!isCancelled) ...[
                     _buildSectionLabel(context, 'Order Progress'),
                     const SizedBox(height: AppSpacing.sm),
@@ -210,9 +215,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     const SizedBox(height: AppSpacing.lg),
                   ],
 
-                  // Delivery info (when assigned)
-                  if (order.delivery != null &&
-                      order.delivery!.hasRider) ...[
+                  // Delivery info
+                  if (order.delivery != null && order.delivery!.hasRider) ...[
                     _buildSectionLabel(context, 'Delivery Info'),
                     const SizedBox(height: AppSpacing.sm),
                     _DeliveryInfoCard(delivery: order.delivery!),
@@ -226,14 +230,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
 
                   const SizedBox(height: AppSpacing.lg),
 
-                  // Error banner (cancel error)
                   if (tracking.errorMessage != null) ...[
                     StatusBanner(
                         message: tracking.errorMessage!, isError: true),
                     const SizedBox(height: AppSpacing.md),
                   ],
 
-                  // Cancel button — only while pending
                   if (order.status.canCancel) ...[
                     _CancelOrderButton(
                       isCancelling: tracking.isCancelling,
@@ -242,11 +244,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     const SizedBox(height: AppSpacing.md),
                   ],
 
-                  // Chat CTA
                   if (!isCancelled && !order.status.isFinal)
-                    _ChatCta(
-                      onTap: () => _openChat(context, order.id),
-                    ),
+                    _ChatCta(onTap: () => _openChat(context, order.id)),
 
                   const SizedBox(height: AppSpacing.xl),
                 ],
@@ -269,16 +268,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     );
   }
 
-  // ─── Skeleton ──────────────────────────────────────────────────────────────
   Widget _buildSkeleton() {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SkeletonBox(height: 120, radius: AppRadius.lg),
+          _SkeletonBox(height: 88, radius: AppRadius.lg),
           const SizedBox(height: AppSpacing.lg),
-          _SkeletonBox(height: 200, radius: AppRadius.lg),
+          _SkeletonBox(height: 320, radius: AppRadius.lg),
           const SizedBox(height: AppSpacing.lg),
           _SkeletonBox(height: 140, radius: AppRadius.lg),
         ],
@@ -370,134 +368,147 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   }
 }
 
-// ─── Status Hero Card ──────────────────────────────────────────────────────────
+// ─── Option C: Status Hero Card (split layout, compact) ───────────────────────
+//
+// Smaller card — icon LEFT, text RIGHT — frees up more vertical space for
+// the timeline below. Icon changes per status and animates when active.
 class _StatusHeroCard extends StatelessWidget {
   final OrderDetail order;
   final Animation<double> pulse;
+  final Animation<double> steam;
 
-  const _StatusHeroCard({required this.order, required this.pulse});
+  const _StatusHeroCard({
+    required this.order,
+    required this.pulse,
+    required this.steam,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isCancelled = order.status == OrderStatus.cancelled;
     final isCompleted = order.status == OrderStatus.completed;
 
+    final Color statusColor = isCancelled
+        ? AppColors.error
+        : isCompleted
+        ? AppColors.success
+        : AppColors.gold;
+
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg, vertical: AppSpacing.md + 2),
       decoration: BoxDecoration(
         color: AppColors.primaryDark,
         borderRadius: BorderRadius.circular(AppRadius.xl),
         boxShadow: AppShadows.goldGlow,
       ),
-      child: Stack(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 4),
-
-              // Animated status icon
-              SizedBox(
-                width: 72,
-                height: 72,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    if (!isCancelled && !isCompleted)
-                      AnimatedBuilder(
-                        animation: pulse,
-                        builder: (_, __) => Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.gold
-                                .withOpacity(pulse.value * 0.18),
-                          ),
-                        ),
-                      ),
-                    Container(
-                      width: 54,
-                      height: 54,
+          // ── Animated status icon ──────────────────────────────────────────
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Pulse ring — only for active (not final) states
+                if (!isCancelled && !isCompleted)
+                  AnimatedBuilder(
+                    animation: pulse,
+                    builder: (_, __) => Container(
+                      width: 64,
+                      height: 64,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isCancelled
-                            ? AppColors.error.withOpacity(0.15)
-                            : isCompleted
-                            ? AppColors.success.withOpacity(0.15)
-                            : AppColors.gold.withOpacity(0.2),
-                        border: Border.all(
-                          color: isCancelled
-                              ? AppColors.error
-                              : isCompleted
-                              ? AppColors.success
-                              : AppColors.gold,
-                          width: 2,
-                        ),
-                      ),
-                      child: Center(
-                        child: CustomPaint(
-                          size: const Size(28, 28),
-                          painter: _StatusIconPainter(order.status),
-                        ),
+                        color: AppColors.gold
+                            .withOpacity(pulse.value * 0.15),
                       ),
                     ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.md),
-
-              Text(
-                order.status.label,
-                style: GoogleFonts.playfairDisplaySc(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: isCancelled
-                      ? AppColors.error
-                      : isCompleted
-                      ? AppColors.success
-                      : AppColors.gold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 4),
-
-              Text(
-                order.status.description,
-                style: GoogleFonts.karla(
-                  fontSize: 13,
-                  color: AppColors.textOnDark.withOpacity(0.65),
-                  height: 1.4,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: AppSpacing.md),
-
-              // Order number pill
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  border: Border.all(
-                      color: AppColors.gold.withOpacity(0.35), width: 1),
-                ),
-                child: Text(
-                  order.orderNumber,
-                  style: GoogleFonts.karla(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.gold,
-                    letterSpacing: 0.5,
+                  ),
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isCancelled
+                        ? AppColors.error.withOpacity(0.15)
+                        : isCompleted
+                        ? AppColors.success.withOpacity(0.12)
+                        : AppColors.gold.withOpacity(0.16),
+                    border: Border.all(color: statusColor, width: 2),
+                  ),
+                  child: Center(
+                    child: _HeroStatusIcon(
+                      status: order.status,
+                      steam: steam,
+                      color: statusColor,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+
+          const SizedBox(width: AppSpacing.md),
+
+          // ── Text block ────────────────────────────────────────────────────
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Micro label
+                Text(
+                  'Current status',
+                  style: GoogleFonts.karla(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textOnDark.withOpacity(0.4),
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  order.status.label,
+                  style: GoogleFonts.playfairDisplaySc(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  order.status.description,
+                  style: GoogleFonts.karla(
+                    fontSize: 12,
+                    color: AppColors.textOnDark.withOpacity(0.6),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    border: Border.all(
+                        color: AppColors.gold.withOpacity(0.35), width: 1),
+                  ),
+                  child: Text(
+                    order.orderNumber,
+                    style: GoogleFonts.karla(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gold,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -505,7 +516,65 @@ class _StatusHeroCard extends StatelessWidget {
   }
 }
 
-// ─── Order Timeline ────────────────────────────────────────────────────────────
+// ─── Hero status icon — changes per order status ───────────────────────────────
+// Preparing → steaming bowl (with animation)
+// Out for Delivery → motorbike
+// Completed → checkmark
+// Cancelled → X
+// Everything else → clock/check
+class _HeroStatusIcon extends StatelessWidget {
+  final OrderStatus status;
+  final Animation<double> steam;
+  final Color color;
+
+  const _HeroStatusIcon({
+    required this.status,
+    required this.steam,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    switch (status) {
+      case OrderStatus.preparing:
+        return AnimatedBuilder(
+          animation: steam,
+          builder: (_, __) => CustomPaint(
+            size: const Size(28, 28),
+            painter: _SteamingBowlPainter(color: color, steamOffset: steam.value),
+          ),
+        );
+      case OrderStatus.outForDelivery:
+        return CustomPaint(
+          size: const Size(28, 28),
+          painter: _BikeIconPainter(color: color),
+        );
+      case OrderStatus.completed:
+        return CustomPaint(
+          size: const Size(28, 28),
+          painter: _CheckIconPainter(color: color),
+        );
+      case OrderStatus.cancelled:
+        return CustomPaint(
+          size: const Size(28, 28),
+          painter: _XIconPainter(color: color),
+        );
+      case OrderStatus.pending:
+        return CustomPaint(
+          size: const Size(28, 28),
+          painter: _ClockIconPainter(color: color),
+        );
+      case OrderStatus.confirmed:
+      case OrderStatus.ready:
+        return CustomPaint(
+          size: const Size(28, 28),
+          painter: _CheckIconPainter(color: color),
+        );
+    }
+  }
+}
+
+// ─── Option Z: Order Timeline (bigger rows, unique icon per step) ──────────────
 class _OrderTimeline extends StatelessWidget {
   final OrderDetail order;
   final Animation<double> pulse;
@@ -526,7 +595,8 @@ class _OrderTimeline extends StatelessWidget {
     final currentIdx = order.status.timelineIndex;
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -574,70 +644,81 @@ class _TimelineRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Dot + line column
+          // ── Icon + connector line ─────────────────────────────────────────
           SizedBox(
-            width: 32,
+            width: 44,
             child: Column(
               children: [
-                // Dot
+                // Icon circle — bigger than before (44px)
                 SizedBox(
-                  width: 32,
-                  height: 32,
+                  width: 44,
+                  height: 44,
                   child: Center(
                     child: isActive
                         ? AnimatedBuilder(
                       animation: pulse,
                       builder: (_, __) => Container(
-                        width: 20,
-                        height: 20,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: AppColors.gold
-                              .withOpacity(0.25 * pulse.value + 0.1),
+                              .withOpacity(0.12 * pulse.value + 0.06),
+                          border: Border.all(
+                              color: AppColors.gold, width: 2),
                         ),
                         child: Center(
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppColors.gold,
+                          child: CustomPaint(
+                            size: const Size(22, 22),
+                            painter: _TimelineIconPainter(
+                              status: status,
+                              isDone: isDone,
+                              isActive: isActive,
                             ),
                           ),
                         ),
                       ),
                     )
                         : Container(
-                      width: 12,
-                      height: 12,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: isDone
                             ? AppColors.gold
-                            : AppColors.border,
-                        border: Border.all(
-                          color: isDone
-                              ? AppColors.gold
-                              : AppColors.border,
-                          width: 2,
+                            : AppColors.surfaceWarm,
+                        border: isDone
+                            ? null
+                            : Border.all(
+                            color: AppColors.border, width: 1.5),
+                      ),
+                      child: Center(
+                        child: isDone
+                            ? const Icon(Icons.check_rounded,
+                            size: 18,
+                            color: AppColors.primaryDark)
+                            : CustomPaint(
+                          size: const Size(22, 22),
+                          painter: _TimelineIconPainter(
+                            status: status,
+                            isDone: isDone,
+                            isActive: isActive,
+                          ),
                         ),
                       ),
-                      child: isDone
-                          ? const Icon(Icons.check_rounded,
-                          size: 7, color: AppColors.primaryDark)
-                          : null,
                     ),
                   ),
                 ),
-                // Connector line
+                // Connector
                 if (!isLast)
                   Expanded(
                     child: Center(
                       child: Container(
                         width: 2,
+                        margin: const EdgeInsets.symmetric(vertical: 2),
                         decoration: BoxDecoration(
                           color: isDone
-                              ? AppColors.gold.withOpacity(0.6)
+                              ? AppColors.gold.withOpacity(0.7)
                               : AppColors.border,
                           borderRadius: BorderRadius.circular(1),
                         ),
@@ -648,14 +729,14 @@ class _TimelineRow extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(width: AppSpacing.sm),
+          const SizedBox(width: AppSpacing.md),
 
-          // Label
+          // ── Text ──────────────────────────────────────────────────────────
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(
-                top: 6,
-                bottom: isLast ? 0 : AppSpacing.lg,
+                top: 10,
+                bottom: isLast ? 4 : AppSpacing.lg,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -663,25 +744,34 @@ class _TimelineRow extends StatelessWidget {
                   Text(
                     status.label,
                     style: GoogleFonts.karla(
-                      fontSize: 14,
-                      fontWeight: isActive
-                          ? FontWeight.w700
-                          : FontWeight.w500,
+                      fontSize: 15,
+                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                       color: isActive
                           ? AppColors.primary
                           : isDone
                           ? AppColors.textSecondary
                           : AppColors.textMuted,
+                      height: 1.2,
                     ),
                   ),
                   if (isActive) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       status.description,
                       style: GoogleFonts.karla(
                         fontSize: 12,
                         color: AppColors.gold,
                         fontWeight: FontWeight.w500,
+                        height: 1.4,
+                      ),
+                    ),
+                  ] else if (isDone) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Done',
+                      style: GoogleFonts.karla(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
                       ),
                     ),
                   ],
@@ -695,7 +785,325 @@ class _TimelineRow extends StatelessWidget {
   }
 }
 
-// ─── Delivery Info Card ────────────────────────────────────────────────────────
+// ─── Timeline Icon Painter — unique icon per step ─────────────────────────────
+class _TimelineIconPainter extends CustomPainter {
+  final OrderStatus status;
+  final bool isDone;
+  final bool isActive;
+
+  const _TimelineIconPainter({
+    required this.status,
+    required this.isDone,
+    required this.isActive,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final color = isActive
+        ? AppColors.gold
+        : isDone
+        ? AppColors.primaryDark // on gold bg
+        : AppColors.textMuted;
+
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final w = size.width;
+    final h = size.height;
+
+    switch (status) {
+    // Pending → clock
+      case OrderStatus.pending:
+        canvas.drawCircle(Offset(w / 2, h / 2), w * 0.42, p);
+        canvas.drawLine(
+            Offset(w / 2, h * 0.25), Offset(w / 2, h / 2), p);
+        canvas.drawLine(
+            Offset(w / 2, h / 2), Offset(w * 0.68, h * 0.62), p);
+        break;
+
+    // Confirmed → document tick
+      case OrderStatus.confirmed:
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(w * 0.15, 0, w * 0.7, h),
+                const Radius.circular(3)),
+            p);
+        canvas.drawPath(
+            Path()
+              ..moveTo(w * 0.3, h * 0.5)
+              ..lineTo(w * 0.45, h * 0.65)
+              ..lineTo(w * 0.7, h * 0.38),
+            p..strokeWidth = 1.8);
+        break;
+
+    // Preparing → steaming bowl (static for timeline, animated only in hero)
+      case OrderStatus.preparing:
+      // Bowl
+        canvas.drawOval(
+            Rect.fromLTWH(w * 0.05, h * 0.5, w * 0.9, h * 0.38),
+            p..strokeWidth = 1.5);
+        canvas.drawLine(
+            Offset(w * 0.05, h * 0.69), Offset(w * 0.95, h * 0.69),
+            p..strokeWidth = 1.2);
+        // Three steam wisps
+        for (int i = 0; i < 3; i++) {
+          final x = w * (0.28 + i * 0.22);
+          canvas.drawPath(
+              Path()
+                ..moveTo(x, h * 0.48)
+                ..quadraticBezierTo(x + w * 0.07, h * 0.35, x, h * 0.22)
+                ..quadraticBezierTo(x - w * 0.07, h * 0.09, x, 0),
+              p..strokeWidth = 1.2
+                ..color = color.withOpacity(0.65));
+        }
+        break;
+
+    // Ready → box / package
+      case OrderStatus.ready:
+      // Box body
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(w * 0.1, h * 0.3, w * 0.8, h * 0.65),
+                const Radius.circular(2)),
+            p..strokeWidth = 1.5..color = color);
+        // Box lid
+        canvas.drawPath(
+            Path()
+              ..moveTo(0, h * 0.3)
+              ..lineTo(w * 0.5, h * 0.1)
+              ..lineTo(w, h * 0.3),
+            p..strokeWidth = 1.4);
+        // Box stripe
+        canvas.drawLine(
+            Offset(w / 2, h * 0.1), Offset(w / 2, h * 0.95),
+            p..strokeWidth = 1.2..color = color.withOpacity(0.5));
+        break;
+
+    // Out for delivery → motorbike
+      case OrderStatus.outForDelivery:
+      // Wheels
+        canvas.drawCircle(
+            Offset(w * 0.22, h * 0.72), w * 0.19,
+            p..strokeWidth = 1.6..color = color);
+        canvas.drawCircle(
+            Offset(w * 0.78, h * 0.72), w * 0.19, p);
+        // Frame
+        canvas.drawPath(
+            Path()
+              ..moveTo(w * 0.22, h * 0.72)
+              ..lineTo(w * 0.4, h * 0.32)
+              ..lineTo(w * 0.62, h * 0.32)
+              ..lineTo(w * 0.78, h * 0.72)
+              ..moveTo(w * 0.5, h * 0.32)
+              ..lineTo(w * 0.5, h * 0.16)
+              ..lineTo(w * 0.62, h * 0.16),
+            p..strokeWidth = 1.5);
+        break;
+
+    // Completed → checkmark in circle
+      case OrderStatus.completed:
+        canvas.drawCircle(Offset(w / 2, h / 2), w * 0.42,
+            p..strokeWidth = 1.5..color = color);
+        canvas.drawPath(
+            Path()
+              ..moveTo(w * 0.24, h * 0.52)
+              ..lineTo(w * 0.42, h * 0.70)
+              ..lineTo(w * 0.76, h * 0.34),
+            p..strokeWidth = 2.0);
+        break;
+
+      case OrderStatus.cancelled:
+        canvas.drawLine(Offset(w * 0.3, h * 0.3), Offset(w * 0.7, h * 0.7), p);
+        canvas.drawLine(Offset(w * 0.7, h * 0.3), Offset(w * 0.3, h * 0.7), p);
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ─── Hero Icon Painters ────────────────────────────────────────────────────────
+
+class _SteamingBowlPainter extends CustomPainter {
+  final Color color;
+  final double steamOffset; // 0.0 → 1.0, drives upward steam
+
+  const _SteamingBowlPainter(
+      {required this.color, required this.steamOffset});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final w = size.width;
+    final h = size.height;
+
+    // Bowl rim
+    canvas.drawOval(
+        Rect.fromLTWH(w * 0.05, h * 0.52, w * 0.9, h * 0.32), p);
+    // Bowl bottom curve
+    canvas.drawPath(
+        Path()
+          ..moveTo(w * 0.05, h * 0.68)
+          ..quadraticBezierTo(w * 0.05, h * 0.96, w / 2, h * 0.96)
+          ..quadraticBezierTo(w * 0.95, h * 0.96, w * 0.95, h * 0.68),
+        p);
+
+    // Animated steam wisps
+    final steamDy = steamOffset * h * 0.18;
+    final steamAlpha = (1 - steamOffset * 0.6).clamp(0.0, 1.0);
+
+    canvas.save();
+    canvas.translate(0, -steamDy);
+    for (int i = 0; i < 3; i++) {
+      final x = w * (0.28 + i * 0.22);
+      canvas.drawPath(
+          Path()
+            ..moveTo(x, h * 0.50)
+            ..quadraticBezierTo(x + w * 0.09, h * 0.35, x, h * 0.20)
+            ..quadraticBezierTo(x - w * 0.09, h * 0.05, x, 0),
+          p
+            ..color = color.withOpacity(steamAlpha * 0.85)
+            ..strokeWidth = 1.5);
+    }
+    canvas.restore();
+
+    // Noodle lines (decorative)
+    for (int i = 0; i < 3; i++) {
+      final y = h * (0.57 + i * 0.06);
+      canvas.drawLine(
+          Offset(w * 0.22, y), Offset(w * 0.78, y),
+          p..color = color.withOpacity(0.35)..strokeWidth = 1.2);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SteamingBowlPainter old) =>
+      old.steamOffset != steamOffset;
+}
+
+class _BikeIconPainter extends CustomPainter {
+  final Color color;
+  const _BikeIconPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final w = size.width;
+    final h = size.height;
+
+    canvas.drawCircle(Offset(w * 0.22, h * 0.70), w * 0.19, p);
+    canvas.drawCircle(Offset(w * 0.78, h * 0.70), w * 0.19, p);
+
+    canvas.drawPath(
+        Path()
+          ..moveTo(w * 0.22, h * 0.70)
+          ..lineTo(w * 0.40, h * 0.30)
+          ..lineTo(w * 0.63, h * 0.30)
+          ..lineTo(w * 0.78, h * 0.70)
+          ..moveTo(w * 0.50, h * 0.30)
+          ..lineTo(w * 0.50, h * 0.12)
+          ..lineTo(w * 0.64, h * 0.12),
+        p);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+class _CheckIconPainter extends CustomPainter {
+  final Color color;
+  const _CheckIconPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(
+        Path()
+          ..moveTo(size.width * 0.14, size.height * 0.52)
+          ..lineTo(size.width * 0.40, size.height * 0.76)
+          ..lineTo(size.width * 0.86, size.height * 0.26),
+        p);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+class _XIconPainter extends CustomPainter {
+  final Color color;
+  const _XIconPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+        Offset(size.width * 0.2, size.height * 0.2),
+        Offset(size.width * 0.8, size.height * 0.8), p);
+    canvas.drawLine(
+        Offset(size.width * 0.8, size.height * 0.2),
+        Offset(size.width * 0.2, size.height * 0.8), p);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+class _ClockIconPainter extends CustomPainter {
+  final Color color;
+  const _ClockIconPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawCircle(
+        Offset(size.width / 2, size.height / 2), size.width * 0.42, p);
+    canvas.drawLine(
+        Offset(size.width / 2, size.height * 0.26),
+        Offset(size.width / 2, size.height / 2), p);
+    canvas.drawLine(
+        Offset(size.width / 2, size.height / 2),
+        Offset(size.width * 0.68, size.height * 0.62), p);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+// ─── Other existing widgets (unchanged) ───────────────────────────────────────
+
 class _DeliveryInfoCard extends StatelessWidget {
   final DeliveryInfo delivery;
   const _DeliveryInfoCard({required this.delivery});
@@ -766,7 +1174,6 @@ class _DeliveryInfoCard extends StatelessWidget {
   }
 }
 
-// ─── Order Items Card ──────────────────────────────────────────────────────────
 class _OrderItemsCard extends StatelessWidget {
   final OrderDetail order;
   const _OrderItemsCard({required this.order});
@@ -810,10 +1217,8 @@ class _OrderItemsCard extends StatelessWidget {
                               fontSize: 13)),
                       if (item.note != null && item.note!.isNotEmpty)
                         Text('Note: ${item.note}',
-                            style: AppTextStyles.caption(context)
-                                .copyWith(
-                                color:
-                                AppColors.textMuted,
+                            style: AppTextStyles.caption(context).copyWith(
+                                color: AppColors.textMuted,
                                 fontStyle: FontStyle.italic)),
                     ],
                   ),
@@ -855,12 +1260,10 @@ class _OrderItemsCard extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: AppSpacing.xs),
           Row(
             children: [
-              Text('Payment: ',
-                  style: AppTextStyles.caption(context)),
+              Text('Payment: ', style: AppTextStyles.caption(context)),
               Text(
                 order.paymentMethod == 'gcash' ? 'GCash' : 'Cash on Delivery',
                 style: AppTextStyles.caption(context)
@@ -874,7 +1277,6 @@ class _OrderItemsCard extends StatelessWidget {
   }
 }
 
-// ─── Cancel Button ─────────────────────────────────────────────────────────────
 class _CancelOrderButton extends StatelessWidget {
   final bool isCancelling;
   final VoidCallback onCancel;
@@ -915,7 +1317,6 @@ class _CancelOrderButton extends StatelessWidget {
   }
 }
 
-// ─── Chat CTA ─────────────────────────────────────────────────────────────────
 class _ChatCta extends StatelessWidget {
   final VoidCallback onTap;
   const _ChatCta({required this.onTap});
@@ -934,22 +1335,13 @@ class _ChatCta extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(4),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: AppColors.gold.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/images/ndo_bot.png',
-                  width: 28,
-                  height: 28,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => CustomPaint(
-                      size: const Size(18, 18),
-                      painter: _ChatIconPainter()),
-                ),
-              ),
+              child: CustomPaint(
+                  size: const Size(18, 18), painter: _ChatIconPainter()),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
@@ -975,7 +1367,7 @@ class _ChatCta extends StatelessWidget {
   }
 }
 
-// ─── Skeleton Box ──────────────────────────────────────────────────────────────
+// ─── Skeleton ──────────────────────────────────────────────────────────────────
 class _SkeletonBox extends StatefulWidget {
   final double height;
   final double radius;
@@ -989,6 +1381,7 @@ class _SkeletonBoxState extends State<_SkeletonBox>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
+
   @override
   void initState() {
     super.initState();
@@ -1026,102 +1419,15 @@ class _LanternDotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawOval(
-        Rect.fromLTWH(size.width * 0.1, size.height * 0.2, size.width * 0.8,
-            size.height * 0.6),
+        Rect.fromLTWH(size.width * 0.1, size.height * 0.2,
+            size.width * 0.8, size.height * 0.6),
         Paint()
           ..color = AppColors.gold
           ..style = PaintingStyle.fill);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _StatusIconPainter extends CustomPainter {
-  final OrderStatus status;
-  const _StatusIconPainter(this.status);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = status == OrderStatus.cancelled
-          ? AppColors.error
-          : status == OrderStatus.completed
-          ? AppColors.success
-          : AppColors.gold
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    switch (status) {
-      case OrderStatus.cancelled:
-        canvas.drawLine(
-            Offset(size.width * 0.2, size.height * 0.2),
-            Offset(size.width * 0.8, size.height * 0.8), p);
-        canvas.drawLine(
-            Offset(size.width * 0.8, size.height * 0.2),
-            Offset(size.width * 0.2, size.height * 0.8), p);
-        break;
-      case OrderStatus.completed:
-        canvas.drawPath(
-            Path()
-              ..moveTo(size.width * 0.15, size.height * 0.5)
-              ..lineTo(size.width * 0.4, size.height * 0.75)
-              ..lineTo(size.width * 0.85, size.height * 0.25),
-            p);
-        break;
-      case OrderStatus.pending:
-        canvas.drawCircle(Offset(size.width / 2, size.height / 2),
-            size.width * 0.38, p);
-        canvas.drawLine(
-            Offset(size.width / 2, size.height * 0.25),
-            Offset(size.width / 2, size.height / 2), p);
-        canvas.drawLine(
-            Offset(size.width / 2, size.height / 2),
-            Offset(size.width * 0.68, size.height * 0.62), p);
-        break;
-      case OrderStatus.preparing:
-      // flame / fire shape
-        final flame = Path()
-          ..moveTo(size.width * 0.5, size.height * 0.1)
-          ..quadraticBezierTo(size.width * 0.8, size.height * 0.3,
-              size.width * 0.75, size.height * 0.65)
-          ..quadraticBezierTo(size.width * 0.65, size.height * 0.5,
-              size.width * 0.5, size.height * 0.9)
-          ..quadraticBezierTo(size.width * 0.35, size.height * 0.5,
-              size.width * 0.25, size.height * 0.65)
-          ..quadraticBezierTo(size.width * 0.2, size.height * 0.3,
-              size.width * 0.5, size.height * 0.1);
-        canvas.drawPath(flame, p);
-        break;
-      case OrderStatus.outForDelivery:
-      // motorbike simplified
-        canvas.drawCircle(
-            Offset(size.width * 0.22, size.height * 0.7), size.width * 0.2, p);
-        canvas.drawCircle(
-            Offset(size.width * 0.78, size.height * 0.7), size.width * 0.2, p);
-        canvas.drawPath(
-            Path()
-              ..moveTo(size.width * 0.22, size.height * 0.7)
-              ..lineTo(size.width * 0.42, size.height * 0.3)
-              ..lineTo(size.width * 0.65, size.height * 0.3)
-              ..lineTo(size.width * 0.78, size.height * 0.7),
-            p);
-        break;
-      default:
-      // checkmark for confirmed/ready
-        canvas.drawPath(
-            Path()
-              ..moveTo(size.width * 0.15, size.height * 0.5)
-              ..lineTo(size.width * 0.4, size.height * 0.75)
-              ..lineTo(size.width * 0.85, size.height * 0.25),
-            p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter _) => false;
 }
 
 class _ChatIconPainter extends CustomPainter {
@@ -1149,7 +1455,7 @@ class _ChatIconPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter _) => false;
 }
 
 class _RiderIconPainter extends CustomPainter {
@@ -1178,7 +1484,7 @@ class _RiderIconPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter _) => false;
 }
 
 class _LalamoveIconPainter extends CustomPainter {
@@ -1192,8 +1498,8 @@ class _LalamoveIconPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
     canvas.drawRRect(
         RRect.fromRectAndRadius(
-            Rect.fromLTWH(
-                0, size.height * 0.2, size.width * 0.72, size.height * 0.55),
+            Rect.fromLTWH(0, size.height * 0.2, size.width * 0.72,
+                size.height * 0.55),
             const Radius.circular(3)),
         p);
     canvas.drawPath(
@@ -1212,5 +1518,5 @@ class _LalamoveIconPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant CustomPainter _) => false;
 }
