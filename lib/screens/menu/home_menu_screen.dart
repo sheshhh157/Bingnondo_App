@@ -17,6 +17,8 @@ import '../settings/account_settings_screen.dart';
 import '../chat/support_chat_screen.dart';
 import '../../services/order_tracking_provider.dart';
 import '../../services/orders_provider.dart';
+import '../../services/announcement_provider.dart';
+import '../../widgets/lantern_announcement_panel.dart';
 
 class HomeMenuScreen extends StatefulWidget {
   const HomeMenuScreen({super.key});
@@ -157,24 +159,34 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
       backgroundColor: AppColors.background,
       body: Consumer<MenuProvider>(
         builder: (context, menuProvider, _) {
-          return Column(
+          return Stack(
             children: [
-              _PersistentHeader(
-                collapseRatio: _collapseRatio,
-                expandedHeight: _expandedHeaderH,
-                collapsedHeight: _collapsedHeaderH,
-                badgeBounce: _badgeBounce,
-                onCartTap: _goToCart,
-                onNotifTap: () => _push(const NotificationsScreen()),
-                onProfileTap: () => _showProfileMenu(context),
+              // ── Main content column ─────────────────────────────────────
+              Column(
+                children: [
+                  _PersistentHeader(
+                    collapseRatio: _collapseRatio,
+                    expandedHeight: _expandedHeaderH,
+                    collapsedHeight: _collapsedHeaderH,
+                    badgeBounce: _badgeBounce,
+                    onCartTap: _goToCart,
+                    onNotifTap: () => _push(const NotificationsScreen()),
+                    onProfileTap: () => _showProfileMenu(context),
+                  ),
+                  if (menuProvider.isLoaded &&
+                      menuProvider.categories.isNotEmpty)
+                    _CategoryTabBar(
+                      controller: _tabController,
+                      categories: menuProvider.categories,
+                    ),
+                  Expanded(child: _buildBody(context, menuProvider)),
+                ],
               ),
-              if (menuProvider.isLoaded &&
-                  menuProvider.categories.isNotEmpty)
-                _CategoryTabBar(
-                  controller: _tabController,
-                  categories: menuProvider.categories,
-                ),
-              Expanded(child: _buildBody(context, menuProvider)),
+
+              // ── Lantern announcement panel (topmost layer) ──────────────
+              // Drops in from top when app opens and has new announcements.
+              // Lantern is draggable on the right side; rope connects to panel.
+              const LanternAnnouncementPanel(),
             ],
           );
         },
@@ -344,7 +356,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                        color: AppColors.gold, 
+                        color: AppColors.gold,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.primaryDark, width: 1.5)
                     ),

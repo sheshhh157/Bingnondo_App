@@ -224,3 +224,43 @@ String kMockStaffReply(String message) {
   }
   return 'Thanks for reaching out! We\'ll attend to your concern shortly.';
 }
+
+// ─── §Announcements: Mock Data ────────────────────────────────────────────────
+// kMockAnnouncements — shown in the lantern panel on HomeMenuScreen.
+// Set is_new: true to trigger the auto-open + new badge dot on the lantern.
+// Change type to: 'discount' | 'new_menu' | 'event' | 'general'
+const List<Map<String, dynamic>> kMockAnnouncements = [
+  {
+    'id': 1,
+    'type': 'discount',
+    'title': '15% Off This Weekend!',
+    'body': 'Enjoy 15% off on all Dimsum orders every Saturday and Sunday. '
+        'Use code BINGNONDO15 at checkout. Valid until September 30, 2026.',
+    'cta_label': 'Order Now',
+    'cta_route': '/menu',
+    'is_new': true,
+    'published_at': '2026-09-07T08:00:00.000Z',
+  },
+  {
+    'id': 2,
+    'type': 'new_menu',
+    'title': 'New: Peking Duck Rice Plate',
+    'body': 'Authentic Peking Duck slow-roasted for 24 hours, served on '
+        'jasmine rice with hoisin glaze and spring onions. Now available daily!',
+    'cta_label': 'See Menu',
+    'cta_route': '/menu',
+    'is_new': true,
+    'published_at': '2026-09-06T10:00:00.000Z',
+  },
+  {
+    'id': 3,
+    'type': 'event',
+    'title': 'Mid-Autumn Festival Specials',
+    'body': 'Celebrate the Mid-Autumn Festival with us! Special mooncake '
+        'platters and Taro Milk Tea bundles available September 17–20.',
+    'cta_label': 'Learn More',
+    'cta_route': null,
+    'is_new': false,
+    'published_at': '2026-09-05T09:00:00.000Z',
+  },
+];
