@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../models/menu_models.dart';
@@ -161,6 +162,17 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
         builder: (context, menuProvider, _) {
           return Stack(
             children: [
+              // ── SVG Background Pattern ─────────────────────────────────
+              Positioned.fill(
+                child: Opacity(
+                  opacity: 0.3, // Pwedeng baguhin ang opacity dito (halimbawa 0.1, 0.3, o 0.8)
+                  child: SvgPicture.asset(
+                    'assets/images/menu_bg_pattern.svg',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+
               // ── Main content column ─────────────────────────────────────
               Column(
                 children: [
@@ -1195,25 +1207,36 @@ class _FoodImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (url != null && url!.isNotEmpty) {
-      return Image.network(url!,
-          width: width,
-          height: height,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _ph());
+      return Image.network(
+        url!,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _ph(),
+      );
     }
     return _ph();
   }
 
   Widget _ph() => SizedBox(
-    width: width,
-    height: height,
-    child: Container(
-        color: AppColors.surfaceWarm,
-        child: Center(
-            child: CustomPaint(
+        width: width,
+        height: height,
+        child: SvgPicture.asset(
+          'assets/images/menu_placeholder.svg',
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          placeholderBuilder: (_) => Container(
+            color: AppColors.surfaceWarm,
+            child: Center(
+              child: CustomPaint(
                 size: const Size(40, 40),
-                painter: _BowlPainter()))),
-  );
+                painter: _BowlPainter(),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class _EmptyMenuState extends StatelessWidget {
