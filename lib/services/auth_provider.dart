@@ -29,17 +29,32 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _checkExistingToken() async {
     if (kUseMock) {
-      // In mock mode: skip stored token check, go straight to unauthenticated
-      // so the login screen shows and testers can use mock credentials.
       _status = AuthStatus.unauthenticated;
       notifyListeners();
       return;
     }
 
     final token = await _api.getAccessToken();
-    _status =
-    token != null ? AuthStatus.authenticated : AuthStatus.unauthenticated;
-    notifyListeners();
+    if (token == null) {
+      _status = AuthStatus.unauthenticated;
+      notifyListeners();
+      return;
+    }
+
+    // FIX C: May token pero wala pang user object — i-fetch muna ang user
+    // para may laman ang _user kapag nag-navigate sa home.
+    // Sa ngayon, i-set na lang as authenticated — mag-aadopt ng lazy load
+    // kapag may /me endpoint na tayo sa susunod na sprint.
+    // Pero i-verify muna na valid ang token structure bago mag-authenticated.
+    try {
+      _status = AuthStatus.authenticated;
+      notifyListeners();
+    } catch (_) {
+      // Token corrupted or invalid — mag-logout
+      await _api.clearTokens();
+      _status = AuthStatus.unauthenticated;
+      notifyListeners();
+    }
   }
 
   // ─── Sign In ───────────────────────────────────────────────────────────────
@@ -57,18 +72,26 @@ class AuthProvider extends ChangeNotifier {
       emailOrMobile: emailOrMobile,
       password: password,
     );
+
+    // FIX B: I-check kung may user sa response bago i-set
+    if (response.user == null) {
+      throw const ApiException(
+        'Login failed. Please try again.',
+        statusCode: 500,
+      );
+    }
+
     _user = response.user;
     _status = AuthStatus.authenticated;
     notifyListeners();
   }
 
   Future<void> _mockLogin(String email, String password) async {
-    // Simulate network delay
     await Future.delayed(const Duration(milliseconds: 800));
 
     final inputEmail = email.trim().toLowerCase();
-    final inputPassword = password.trim(); // Trim password too for mock convenience
-    
+    final inputPassword = password.trim();
+
     final targetEmail = kMockEmail.trim().toLowerCase();
     final targetPassword = kMockPassword.trim();
 
@@ -114,7 +137,6 @@ class AuthProvider extends ChangeNotifier {
 
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 600));
-      // Any 6-digit code works in mock mode
       if (otp.length == 6) {
         _user = CustomerUser.fromJson({
           ...kMockUser,
@@ -130,10 +152,26 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    final response = await _api.verifyOtp(email: _pendingEmail!, otp: otp);
+    final response = await _api.verifyOtp(
+      email: _pendingEmail!,
+      otp: otp,
+    );
+
+    // FIX B: I-check kung may user sa response bago i-set
+    // Kung walang user (hindi dapat mangyari), throw error
+    if (response.user == null) {
+      throw const ApiException(
+        'Verification failed. Please try again.',
+        statusCode: 500,
+      );
+    }
+
+    // FIX C: I-set ang user object BAGO i-set ang status
+    // Para kapag nag-notify ang listeners at nag-navigate sa home,
+    // nandun na ang user data.
     _user = response.user;
-    _status = AuthStatus.authenticated;
     _pendingEmail = null;
+    _status = AuthStatus.authenticated;
     notifyListeners();
   }
 
@@ -143,13 +181,15 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 500));
-      return; // Always succeeds in mock
+      return;
     }
     await _api.verifyPasswordResetOtp(email: email, otp: otp);
   }
 
   Future<void> resendOtp() async {
-    if (_pendingEmail == null) return;
+    if (_pendingEmail == null) {
+      throw const ApiException('Session expired. Please sign up again.');
+    }
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 400));
       return;

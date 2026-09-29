@@ -23,17 +23,16 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen>
-    with SingleTickerProviderStateMixin {
+class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   final _otpController = TextEditingController();
   String _currentOtp = '';
 
   bool _isVerifying = false;
   bool _isResending = false;
+  bool _blockAutoVerify = false;
   String? _errorMessage;
   String? _successMessage;
 
-  // Countdown for resend
   static const int _resendSeconds = 60;
   int _countdown = _resendSeconds;
   Timer? _timer;
@@ -93,16 +92,13 @@ class _OtpScreenState extends State<OtpScreen>
   }
 
   Future<void> _handleVerify() async {
-    if (_currentOtp.length < 6) {
-      _shakeController.forward(from: 0);
-      setState(() => _errorMessage = 'Please enter all 6 digits.');
-      return;
-    }
+    if (_currentOtp.length < 6 || _isVerifying || _blockAutoVerify) return;
 
     FocusScope.of(context).unfocus();
     setState(() {
       _isVerifying = true;
       _errorMessage = null;
+      _successMessage = null;
     });
 
     try {
@@ -112,11 +108,27 @@ class _OtpScreenState extends State<OtpScreen>
           otp: _currentOtp,
         );
         if (!mounted) return;
-        // Navigate to reset password screen
+
+        // ✅ Tama — may success message, babalik sa sign in
+        setState(() {
+          _successMessage = 'OTP verified! Redirecting...';
+        });
+        await Future.delayed(const Duration(milliseconds: 1200));
+        if (!mounted) return;
         Navigator.pop(context, _currentOtp);
       } else {
         await context.read<AuthProvider>().verifyOtp(otp: _currentOtp);
-        // Router will automatically redirect to Home/Menu on auth status change
+        if (!mounted) return;
+
+        // ✅ Tama — may success message, babalik sa sign in page
+        setState(() {
+          _successMessage = 'Email verified! Please sign in to continue.';
+        });
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (!mounted) return;
+
+        // Balik sa sign in — pop lahat hanggang sa first route (sign in screen)
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -124,13 +136,23 @@ class _OtpScreenState extends State<OtpScreen>
       setState(() {
         _errorMessage = e.message.contains('expired')
             ? 'OTP has expired. Please request a new one.'
-            : e.message.contains('invalid') || e.message.contains('incorrect')
-            ? 'Incorrect OTP. Please check and try again.'
+            : e.message.contains('invalid') ||
+            e.message.contains('incorrect') ||
+            e.message.contains('Incorrect')
+            ? 'Incorrect OTP. Please try again.'
             : e.message;
+        _currentOtp = '';
+        _blockAutoVerify = true;
       });
+      _otpController.clear();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Something went wrong. Please try again.');
+      setState(() {
+        _errorMessage = 'Something went wrong. Please try again.';
+        _currentOtp = '';
+        _blockAutoVerify = true;
+      });
+      _otpController.clear();
     } finally {
       if (mounted) setState(() => _isVerifying = false);
     }
@@ -143,16 +165,17 @@ class _OtpScreenState extends State<OtpScreen>
       _isResending = true;
       _errorMessage = null;
       _successMessage = null;
+      _blockAutoVerify = false;
     });
 
     try {
       await context.read<AuthProvider>().resendOtp();
       if (!mounted) return;
       setState(() {
-        _successMessage = 'A new OTP has been sent to ${_maskEmail(widget.email)}.';
+        _successMessage = 'New OTP sent to ${_maskEmail(widget.email)}.';
         _currentOtp = '';
-        _otpController.clear();
       });
+      _otpController.clear();
       _startCountdown();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -209,24 +232,16 @@ class _OtpScreenState extends State<OtpScreen>
         child: FadeTransition(
           opacity: _fadeAnim,
           child: isWide
-              ? _buildWideLayout(context, isCompact)
-              : _buildPortraitLayout(context, isCompact),
+              ? Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: _buildContent(context, isCompact),
+            ),
+          )
+              : _buildContent(context, isCompact),
         ),
       ),
     );
-  }
-
-  Widget _buildWideLayout(BuildContext context, bool isCompact) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: _buildContent(context, isCompact),
-      ),
-    );
-  }
-
-  Widget _buildPortraitLayout(BuildContext context, bool isCompact) {
-    return _buildContent(context, isCompact);
   }
 
   Widget _buildContent(BuildContext context, bool isCompact) {
@@ -285,6 +300,20 @@ class _OtpScreenState extends State<OtpScreen>
             const SizedBox(height: AppSpacing.md),
           ],
 
+          // Loading indicator kapag nag-veverify
+          if (_isVerifying) ...[
+            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+                strokeWidth: 2.5,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+
           // OTP Input
           AnimatedBuilder(
             animation: _shakeAnim,
@@ -297,21 +326,11 @@ class _OtpScreenState extends State<OtpScreen>
 
           SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
 
-          // Verify button
-          PrimaryButton(
-            label: widget.isPasswordReset ? 'VERIFY CODE' : 'VERIFY & CONTINUE',
-            onPressed: _currentOtp.length == 6 ? _handleVerify : null,
-            isLoading: _isVerifying,
-          ),
-
-          const SizedBox(height: AppSpacing.lg),
-
-          // Resend
+          // Resend section
           _buildResendSection(context),
 
           const SizedBox(height: AppSpacing.xl),
 
-          // Hint
           Text(
             'Check your spam folder if you don\'t see it.',
             style: AppTextStyles.caption(context),
@@ -319,14 +338,6 @@ class _OtpScreenState extends State<OtpScreen>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildLanternIllustration(bool isCompact) {
-    final size = isCompact ? 60.0 : 80.0;
-    return CustomPaint(
-      size: Size(size, size * 1.4),
-      painter: _BigLanternPainter(),
     );
   }
 
@@ -340,6 +351,7 @@ class _OtpScreenState extends State<OtpScreen>
       animationDuration: const Duration(milliseconds: 150),
       enableActiveFill: true,
       autoFocus: true,
+      enabled: !_isVerifying, // Hindi na pwedeng mag-type habang nag-veverify
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       pinTheme: PinTheme(
         shape: PinCodeFieldShape.box,
@@ -364,12 +376,19 @@ class _OtpScreenState extends State<OtpScreen>
       onChanged: (val) {
         setState(() {
           _currentOtp = val;
+          // I-clear ang messages kapag nag-type ulit
           if (_errorMessage != null) _errorMessage = null;
+          if (_successMessage != null) _successMessage = null;
+          // I-lift ang block kapag nag-type ulit ang user
+          if (_blockAutoVerify) _blockAutoVerify = false;
         });
       },
       onCompleted: (_) {
-        // Auto-trigger verify when all 6 digits entered
-        _handleVerify();
+        // Auto-verify kapag kumpleto na ang 6 digits
+        // at hindi naka-block (i.e. hindi galing sa error clear)
+        if (!_blockAutoVerify) {
+          _handleVerify();
+        }
       },
     );
   }
@@ -412,7 +431,6 @@ class _OtpScreenState extends State<OtpScreen>
   }
 }
 
-// Big lantern for OTP screen illustration
 class _BigLanternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -433,21 +451,21 @@ class _BigLanternPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
-    // String at top
     canvas.drawLine(
       Offset(w / 2, 0),
       Offset(w / 2, h * 0.08),
-      Paint()..color = AppColors.gold..strokeWidth = 1.5..strokeCap = StrokeCap.round,
+      Paint()
+        ..color = AppColors.gold
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round,
     );
 
-    // Top cap
     final capRect = Rect.fromLTWH(w * 0.2, h * 0.06, w * 0.6, h * 0.1);
     canvas.drawRRect(
       RRect.fromRectAndRadius(capRect, const Radius.circular(4)),
       goldFill,
     );
 
-    // Body
     final bodyPath = Path()
       ..moveTo(w * 0.1, h * 0.2)
       ..quadraticBezierTo(0, h * 0.5, w * 0.1, h * 0.78)
@@ -457,28 +475,27 @@ class _BigLanternPainter extends CustomPainter {
     canvas.drawPath(bodyPath, maroonFill);
     canvas.drawPath(bodyPath, goldStroke);
 
-    // Horizontal stripes
     for (int i = 1; i <= 3; i++) {
       final y = h * 0.2 + (h * 0.58) * (i / 4);
-      canvas.drawLine(Offset(w * 0.1, y), Offset(w * 0.9, y),
-          goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1);
+      canvas.drawLine(
+        Offset(w * 0.1, y),
+        Offset(w * 0.9, y),
+        goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1,
+      );
     }
 
-    // Vertical stripe
     canvas.drawLine(
       Offset(w / 2, h * 0.2),
       Offset(w / 2, h * 0.78),
       goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1,
     );
 
-    // Bottom cap
     final botCapRect = Rect.fromLTWH(w * 0.2, h * 0.76, w * 0.6, h * 0.08);
     canvas.drawRRect(
       RRect.fromRectAndRadius(botCapRect, const Radius.circular(4)),
       goldFill,
     );
 
-    // Tassel
     final tasselPaint = Paint()
       ..color = AppColors.gold
       ..strokeWidth = 1.2
@@ -492,7 +509,6 @@ class _BigLanternPainter extends CustomPainter {
       );
     }
 
-    // Glow dot center
     canvas.drawCircle(
       Offset(w / 2, h * 0.49),
       w * 0.06,

@@ -1,13 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 // ─── API Configuration ────────────────────────────────────────────────────────
-// TODO: Replace with your actual backend URL (env variable on production)
 const String _baseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:3000', // Android emulator → localhost
+  defaultValue: 'http://10.0.2.2:3000',
 );
 
 // ─── API Exception ────────────────────────────────────────────────────────────
@@ -177,7 +177,6 @@ class ApiService {
   // ─── Auth Endpoints ────────────────────────────────────────────────────────
 
   /// 1.1 — POST /api/auth/customer/register
-  /// Sign Up: email + password → triggers OTP email
   Future<AuthResponse> register({
     required String email,
     required String password,
@@ -190,7 +189,6 @@ class ApiService {
   }
 
   /// 1.1 — POST /api/auth/customer/verify-otp
-  /// Verify the OTP sent to email after sign-up
   Future<AuthResponse> verifyOtp({
     required String email,
     required String otp,
@@ -203,7 +201,6 @@ class ApiService {
     });
     final response = AuthResponse.fromJson(data);
 
-    // Persist tokens on successful verification
     if (response.accessToken != null && response.refreshToken != null) {
       await saveTokens(
         accessToken: response.accessToken!,
@@ -215,13 +212,12 @@ class ApiService {
   }
 
   /// 1.2 — POST /api/auth/customer/login
-  /// Sign In with email/mobile + password
   Future<AuthResponse> login({
     required String emailOrMobile,
     required String password,
   }) async {
     final data = await _post('/api/auth/customer/login', {
-      'email': emailOrMobile, // backend accepts email or mobile
+      'email': emailOrMobile,
       'password': password,
     });
     final response = AuthResponse.fromJson(data);
@@ -237,7 +233,6 @@ class ApiService {
   }
 
   /// POST /api/auth/customer/verify-otp (purpose: password_reset)
-  /// Verify OTP for password reset
   Future<void> verifyPasswordResetOtp({
     required String email,
     required String otp,
@@ -250,7 +245,6 @@ class ApiService {
   }
 
   /// POST /api/auth/forgot-password
-  /// Request OTP for password reset
   Future<void> forgotPassword({required String email}) async {
     await _post('/api/auth/forgot-password', {
       'email': email,
@@ -258,7 +252,6 @@ class ApiService {
   }
 
   /// POST /api/auth/reset-password
-  /// Reset password with OTP token
   Future<void> resetPassword({
     required String email,
     required String otp,
@@ -271,16 +264,14 @@ class ApiService {
     });
   }
 
-  /// Resend OTP (calls register again or a dedicated resend endpoint)
-  Future<void> resendOtp({required String email, String purpose = 'email_verification'}) async {
+  /// POST /api/auth/customer/resend-otp
+  Future<void> resendOtp({
+    required String email,
+    String purpose = 'email_verification',
+  }) async {
     await _post('/api/auth/customer/resend-otp', {
       'email': email,
       'purpose': purpose,
     });
   }
-}
-
-// Simple timeout exception since dart:io doesn't export it cleanly
-class TimeoutException implements Exception {
-  const TimeoutException();
 }
