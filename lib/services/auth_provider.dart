@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import 'api_service.dart';
 import '../mock/mock_data.dart';
 
@@ -11,13 +12,19 @@ enum AuthStatus {
 
 class AuthProvider extends ChangeNotifier {
   AuthStatus _status = AuthStatus.initial;
+
   CustomerUser? _user;
+
   String? _pendingEmail;
 
   AuthStatus get status => _status;
+
   CustomerUser? get user => _user;
+
   String? get pendingEmail => _pendingEmail;
-  bool get isAuthenticated => _status == AuthStatus.authenticated;
+
+  bool get isAuthenticated =>
+      _status == AuthStatus.authenticated;
 
   final ApiService _api = ApiService.instance;
 
@@ -25,7 +32,7 @@ class AuthProvider extends ChangeNotifier {
     _checkExistingToken();
   }
 
-  // ─── Init ──────────────────────────────────────────────────────────────────
+  // ─── Init ────────────────────────────────────────────────────────────────
 
   Future<void> _checkExistingToken() async {
     if (kUseMock) {
@@ -35,6 +42,7 @@ class AuthProvider extends ChangeNotifier {
     }
 
     final token = await _api.getAccessToken();
+
     if (token == null) {
       _status = AuthStatus.unauthenticated;
       notifyListeners();
@@ -46,19 +54,24 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       await _api.clearTokens();
+
       _status = AuthStatus.unauthenticated;
+
       notifyListeners();
     }
   }
 
-  // ─── Sign In ───────────────────────────────────────────────────────────────
+  // ─── Sign In ─────────────────────────────────────────────────────────────
 
   Future<void> login({
     required String emailOrMobile,
     required String password,
   }) async {
     if (kUseMock) {
-      await _mockLogin(emailOrMobile, password);
+      await _mockLogin(
+        emailOrMobile,
+        password,
+      );
       return;
     }
 
@@ -75,70 +88,84 @@ class AuthProvider extends ChangeNotifier {
     }
 
     _user = response.user;
+
     _status = AuthStatus.authenticated;
+
     notifyListeners();
   }
 
-  Future<void> _mockLogin(String email, String password) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    final inputEmail = email.trim().toLowerCase();
-    final inputPassword = password.trim();
-    final targetEmail = kMockEmail.trim().toLowerCase();
-    final targetPassword = kMockPassword.trim();
-
-    if ((inputEmail == targetEmail || inputEmail == '1234567890') &&
-        inputPassword == targetPassword) {
-      _user = CustomerUser.fromJson(kMockUser);
-      _status = AuthStatus.authenticated;
-      notifyListeners();
-    } else {
-      throw const ApiException(
-        'Invalid credentials. For testing, use:\nEmail: test@bingnondo.com\nPassword: Test1234',
-        statusCode: 401,
-      );
-    }
-  }
-
-  // ─── Sign Up ───────────────────────────────────────────────────────────────
+  // ─── Sign Up ─────────────────────────────────────────────────────────────
 
   Future<void> register({
     required String email,
     required String password,
   }) async {
     if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 600));
-      _pendingEmail = email;
+      await Future.delayed(
+        const Duration(milliseconds: 600),
+      );
+
+      _pendingEmail = email.trim().toLowerCase();
+
       _status = AuthStatus.awaitingVerification;
+
       notifyListeners();
+
       return;
     }
 
-    await _api.register(email: email, password: password);
-    _pendingEmail = email;
+    final normalizedEmail =
+    email.trim().toLowerCase();
+
+    final response = await _api.register(
+      email: normalizedEmail,
+      password: password,
+    );
+
+    if (response.user == null) {
+      throw const ApiException(
+        'Registration failed. Please try again.',
+        statusCode: 500,
+      );
+    }
+
+    _pendingEmail = normalizedEmail;
+
     _status = AuthStatus.awaitingVerification;
+
     notifyListeners();
   }
 
-  // ─── Verify OTP ────────────────────────────────────────────────────────────
+  // ─── OTP Verification ────────────────────────────────────────────────────
 
-  Future<void> verifyOtp({required String otp}) async {
+  Future<void> verifyOtp({
+    required String otp,
+  }) async {
     if (_pendingEmail == null) {
-      throw const ApiException('Session expired. Please sign up again.');
+      throw const ApiException(
+        'Session expired. Please sign up again.',
+      );
     }
 
     if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 600));
+      await Future.delayed(
+        const Duration(milliseconds: 600),
+      );
+
       if (otp.length == 6) {
         return;
-      } else {
-        throw const ApiException('Invalid OTP.', statusCode: 422);
       }
+
+      throw const ApiException(
+        'Invalid OTP.',
+        statusCode: 422,
+      );
     }
 
     final response = await _api.verifyOtp(
       email: _pendingEmail!,
       otp: otp,
+      purpose: 'email_verification',
     );
 
     if (response.user == null) {
@@ -149,74 +176,284 @@ class AuthProvider extends ChangeNotifier {
     }
 
     await _api.clearTokens();
+
     _user = null;
+
+    _status = AuthStatus.unauthenticated;
+
+    notifyListeners();
   }
+
+  // ─── Password Reset OTP Verification ─────────────────────────────────────
 
   Future<void> verifyPasswordResetOtp({
     required String email,
     required String otp,
   }) async {
+    final normalizedEmail =
+    email.trim().toLowerCase();
+
+    final normalizedOtp =
+    otp.trim();
+
+    if (normalizedEmail.isEmpty) {
+      throw const ApiException(
+        'Email address is required.',
+        statusCode: 422,
+      );
+    }
+
+    if (normalizedOtp.length != 6) {
+      throw const ApiException(
+        'Please enter the 6-digit OTP.',
+        statusCode: 422,
+      );
+    }
+
     if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(
+        const Duration(milliseconds: 500),
+      );
+
       return;
     }
-    await _api.verifyPasswordResetOtp(email: email, otp: otp);
+
+    /*
+     * IMPORTANT:
+     *
+     * This specifically verifies a PASSWORD RESET OTP.
+     *
+     * It does NOT use the normal email-verification
+     * endpoint behavior.
+     *
+     * ApiService sends:
+     *
+     * purpose = password_reset
+     */
+    await _api.verifyPasswordResetOtp(
+      email: normalizedEmail,
+      otp: normalizedOtp,
+    );
   }
+
+  // ─── Resend Email Verification OTP ───────────────────────────────────────
 
   Future<void> resendOtp() async {
     if (_pendingEmail == null) {
-      throw const ApiException('Session expired. Please sign up again.');
+      throw const ApiException(
+        'Session expired. Please sign up again.',
+      );
     }
+
     if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(
+        const Duration(milliseconds: 400),
+      );
+
       return;
     }
-    await _api.resendOtp(email: _pendingEmail!);
+
+    /*
+     * This method is ONLY for normal
+     * email verification.
+     */
+    await _api.resendOtp(
+      email: _pendingEmail!,
+      purpose: 'email_verification',
+    );
   }
 
-  // ─── Forgot / Reset ────────────────────────────────────────────────────────
+  // ─── Resend Password Reset OTP ───────────────────────────────────────────
 
-  Future<void> forgotPassword({required String email}) async {
+  Future<void> resendPasswordResetOtp({
+    required String email,
+  }) async {
+    final normalizedEmail =
+    email.trim().toLowerCase();
+
+    if (normalizedEmail.isEmpty) {
+      throw const ApiException(
+        'Email address is required.',
+        statusCode: 422,
+      );
+    }
+
     if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 600));
-      _pendingEmail = email;
+      await Future.delayed(
+        const Duration(milliseconds: 400),
+      );
+
+      _pendingEmail = normalizedEmail;
+
       notifyListeners();
+
       return;
     }
-    await _api.forgotPassword(email: email);
-    _pendingEmail = email;
+
+    /*
+     * IMPORTANT:
+     *
+     * Forgot Password MUST resend using:
+     *
+     * purpose = password_reset
+     *
+     * This prevents the new OTP from accidentally
+     * being created as email_verification.
+     */
+    await _api.resendOtp(
+      email: normalizedEmail,
+      purpose: 'password_reset',
+    );
+
+    _pendingEmail = normalizedEmail;
+
     notifyListeners();
   }
+
+  // ─── Forgot Password ─────────────────────────────────────────────────────
+
+  Future<void> forgotPassword({
+    required String email,
+  }) async {
+    final normalizedEmail =
+    email.trim().toLowerCase();
+
+    if (normalizedEmail.isEmpty) {
+      throw const ApiException(
+        'Email address is required.',
+        statusCode: 422,
+      );
+    }
+
+    if (kUseMock) {
+      await Future.delayed(
+        const Duration(milliseconds: 600),
+      );
+
+      _pendingEmail = normalizedEmail;
+
+      notifyListeners();
+
+      return;
+    }
+
+    /*
+     * The backend checks whether the account exists.
+     *
+     * Existing account:
+     *     request succeeds
+     *
+     * Non-existing account:
+     *     backend returns 404
+     *
+     * If the backend returns 404, this function throws
+     * and the code below is NOT executed.
+     */
+    await _api.forgotPassword(
+      email: normalizedEmail,
+    );
+
+    /*
+     * Reached ONLY when the backend successfully
+     * processed the password reset request.
+     */
+    _pendingEmail = normalizedEmail;
+
+    notifyListeners();
+  }
+
+  // ─── Reset Password ──────────────────────────────────────────────────────
 
   Future<void> resetPassword({
     required String otp,
     required String newPassword,
   }) async {
-    if (_pendingEmail == null) throw const ApiException('Session expired.');
+    if (_pendingEmail == null) {
+      throw const ApiException(
+        'Session expired.',
+      );
+    }
+
+    final normalizedOtp =
+    otp.trim();
+
+    if (normalizedOtp.length != 6) {
+      throw const ApiException(
+        'Please enter the 6-digit OTP.',
+        statusCode: 422,
+      );
+    }
+
     if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 600));
+      await Future.delayed(
+        const Duration(milliseconds: 600),
+      );
+
       _pendingEmail = null;
+
+      notifyListeners();
+
       return;
     }
+
     await _api.resetPassword(
       email: _pendingEmail!,
-      otp: otp,
+      otp: normalizedOtp,
       newPassword: newPassword,
     );
+
     _pendingEmail = null;
-  }
 
-  // ─── Logout ────────────────────────────────────────────────────────────────
-
-  Future<void> logout() async {
-    if (!kUseMock) await _api.clearTokens();
-    _user = null;
-    _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
 
+  // ─── Logout ──────────────────────────────────────────────────────────────
+
+  Future<void> logout() async {
+    if (!kUseMock) {
+      await _api.clearTokens();
+    }
+
+    _user = null;
+
+    _pendingEmail = null;
+
+    _status = AuthStatus.unauthenticated;
+
+    notifyListeners();
+  }
+
+  // ─── Pending Email ───────────────────────────────────────────────────────
+
   void setPendingEmail(String email) {
-    _pendingEmail = email;
+    _pendingEmail =
+        email.trim().toLowerCase();
+
+    notifyListeners();
+  }
+
+  // ─── Mock Login ──────────────────────────────────────────────────────────
+
+  Future<void> _mockLogin(
+      String emailOrMobile,
+      String password,
+      ) async {
+    await Future.delayed(
+      const Duration(milliseconds: 600),
+    );
+
+    _user = CustomerUser(
+      id: 1,
+      email: emailOrMobile,
+      emailVerified: true,
+      profileCompleted: true,
+      status: 'active',
+      firstName: 'Test',
+      lastName: 'User',
+    );
+
+    _status = AuthStatus.authenticated;
+
     notifyListeners();
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
 import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
@@ -12,7 +13,8 @@ class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  State<ForgotPasswordScreen> createState() =>
+      _ForgotPasswordScreenState();
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
@@ -29,8 +31,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   @override
   void initState() {
     super.initState();
-    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
+
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _fadeAnim = CurvedAnimation(
+      parent: _fadeCtrl,
+      curve: Curves.easeOut,
+    );
+
     _fadeCtrl.forward();
   }
 
@@ -42,7 +53,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   }
 
   Future<void> _handleSubmit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
     FocusScope.of(context).unfocus();
 
     setState(() {
@@ -52,115 +66,232 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
     try {
       final email = _emailController.text.trim();
-      await context.read<AuthProvider>().forgotPassword(email: email);
 
-      if (!mounted) return;
+      // The backend checks whether this email
+      // belongs to an existing customer account.
+      await context.read<AuthProvider>().forgotPassword(
+        email: email,
+      );
 
-      // Go to OTP screen, then reset password
+      if (!mounted) {
+        return;
+      }
+
+      // Only navigate to OTP if the backend
+      // successfully accepted the request.
       final otp = await Navigator.push<String>(
         context,
         MaterialPageRoute(
-          builder: (_) => OtpScreen(email: email, isPasswordReset: true),
+          builder: (_) => OtpScreen(
+            email: email,
+            isPasswordReset: true,
+          ),
         ),
       );
 
-      if (!mounted || otp == null) return;
+      if (!mounted || otp == null) {
+        return;
+      }
 
       await Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ResetPasswordScreen(email: email, otp: otp),
+          builder: (_) => ResetPasswordScreen(
+            email: email,
+            otp: otp,
+          ),
         ),
       );
     } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _errorMessage = e.message);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage = e.message;
+      });
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _errorMessage = 'Something went wrong. Please try again.');
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage =
+        'Something went wrong. Please try again.';
+      });
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.height < 680;
+    final isCompact =
+        MediaQuery.of(context).size.height < 680;
 
     return Scaffold(
       backgroundColor: AppColors.background,
+
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
+
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            size: 18,
+          ),
           color: AppColors.textPrimary,
           onPressed: () => Navigator.pop(context),
         ),
       ),
+
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnim,
+
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               AppSpacing.lg,
-              isCompact ? AppSpacing.md : AppSpacing.xxl,
+              isCompact
+                  ? AppSpacing.md
+                  : AppSpacing.xxl,
               AppSpacing.lg,
               AppSpacing.xxl,
             ),
+
             child: Form(
               key: _formKey,
+
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
+
                 children: [
+                  // ======================================================
                   // Illustration
+                  // ======================================================
+
                   Center(
                     child: CustomPaint(
-                      size: Size(isCompact ? 64 : 80, (isCompact ? 64 : 80) * 1.3),
+                      size: Size(
+                        isCompact ? 64 : 80,
+                        (isCompact ? 64 : 80) * 1.3,
+                      ),
                       painter: _KeyPainter(),
                     ),
                   ),
 
-                  SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
-
-                  Text('Forgot password?', style: AppTextStyles.display2(context)),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    'No worries. Enter your email and we\'ll send you a reset code.',
-                    style: AppTextStyles.bodyMedium(context),
+                  SizedBox(
+                    height: isCompact
+                        ? AppSpacing.lg
+                        : AppSpacing.xl,
                   ),
 
-                  SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
+                  // ======================================================
+                  // TITLE
+                  // ======================================================
+
+                  Text(
+                    'Forgot password?',
+                    style:
+                    AppTextStyles.display2(context),
+                  ),
+
+                  const SizedBox(
+                    height: AppSpacing.xs,
+                  ),
+
+                  Text(
+                    'No worries. Enter your email and we\'ll send you a reset code.',
+                    style:
+                    AppTextStyles.bodyMedium(context),
+                  ),
+
+                  SizedBox(
+                    height: isCompact
+                        ? AppSpacing.lg
+                        : AppSpacing.xl,
+                  ),
+
+                  // ======================================================
+                  // ERROR
+                  // ======================================================
 
                   if (_errorMessage != null) ...[
-                    StatusBanner(message: _errorMessage!, isError: true),
-                    const SizedBox(height: AppSpacing.md),
+                    StatusBanner(
+                      message: _errorMessage!,
+                      isError: true,
+                    ),
+
+                    const SizedBox(
+                      height: AppSpacing.md,
+                    ),
                   ],
+
+                  // ======================================================
+                  // EMAIL FIELD
+                  // ======================================================
 
                   AppTextField(
                     label: 'Email Address',
                     hint: 'you@example.com',
                     controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.done,
+
+                    keyboardType:
+                    TextInputType.emailAddress,
+
+                    textInputAction:
+                    TextInputAction.done,
+
                     autofocus: true,
+
                     prefixIcon: const Icon(
                       Icons.mail_outline_rounded,
                       size: 20,
                       color: AppColors.gold,
                     ),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) return 'Email is required.';
-                      final emailReg = RegExp(r'^[\w\.\-]+@[\w\-]+\.[a-z]{2,}$', caseSensitive: false);
-                      if (!emailReg.hasMatch(v.trim())) return 'Please enter a valid email.';
+
+                    validator: (value) {
+                      if (value == null ||
+                          value.trim().isEmpty) {
+                        return 'Email is required.';
+                      }
+
+                      final emailReg = RegExp(
+                        r'^[\w\.\-]+@[\w\-]+\.[a-z]{2,}$',
+                        caseSensitive: false,
+                      );
+
+                      if (!emailReg.hasMatch(
+                        value.trim(),
+                      )) {
+                        return 'Please enter a valid email.';
+                      }
+
                       return null;
                     },
+
                     onChanged: (_) {
-                      if (_errorMessage != null) setState(() => _errorMessage = null);
+                      if (_errorMessage != null) {
+                        setState(() {
+                          _errorMessage = null;
+                        });
+                      }
                     },
                   ),
 
-                  const SizedBox(height: AppSpacing.xl),
+                  const SizedBox(
+                    height: AppSpacing.xl,
+                  ),
+
+                  // ======================================================
+                  // SEND RESET CODE
+                  // ======================================================
 
                   PrimaryButton(
                     label: 'SEND RESET CODE',
@@ -168,14 +299,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                     isLoading: _isLoading,
                   ),
 
-                  const SizedBox(height: AppSpacing.lg),
+                  const SizedBox(
+                    height: AppSpacing.lg,
+                  ),
+
+                  // ======================================================
+                  // BACK TO SIGN IN
+                  // ======================================================
 
                   Center(
                     child: TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
                       child: Text(
                         'Back to Sign In',
-                        style: AppTextStyles.link(context),
+                        style:
+                        AppTextStyles.link(context),
                       ),
                     ),
                   ),
@@ -189,15 +329,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   }
 }
 
+// ============================================================================
+// KEY / EMAIL ILLUSTRATION
+// ============================================================================
+
 class _KeyPainter extends CustomPainter {
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(
+      Canvas canvas,
+      Size size,
+      ) {
     final gold = Paint()
       ..color = AppColors.gold
       ..style = PaintingStyle.fill;
+
     final maroon = Paint()
       ..color = AppColors.primaryDark
       ..style = PaintingStyle.fill;
+
     final stroke = Paint()
       ..color = AppColors.gold
       ..style = PaintingStyle.stroke
@@ -209,41 +358,112 @@ class _KeyPainter extends CustomPainter {
 
     // Envelope body
     final envPath = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, h * 0.25, w, h * 0.65),
-        const Radius.circular(8),
-      ));
-    canvas.drawPath(envPath, maroon);
-    canvas.drawPath(envPath, stroke..style = PaintingStyle.stroke);
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            0,
+            h * 0.25,
+            w,
+            h * 0.65,
+          ),
+          const Radius.circular(8),
+        ),
+      );
 
-    // Envelope flap (open V)
+    canvas.drawPath(
+      envPath,
+      maroon,
+    );
+
+    canvas.drawPath(
+      envPath,
+      stroke..style = PaintingStyle.stroke,
+    );
+
+    // Envelope flap
     final flapPath = Path()
-      ..moveTo(0, h * 0.25)
-      ..lineTo(w / 2, h * 0.52)
-      ..lineTo(w, h * 0.25);
-    canvas.drawPath(flapPath, stroke..style = PaintingStyle.stroke..strokeWidth = 2);
+      ..moveTo(
+        0,
+        h * 0.25,
+      )
+      ..lineTo(
+        w / 2,
+        h * 0.52,
+      )
+      ..lineTo(
+        w,
+        h * 0.25,
+      );
 
-    // Bottom lines (content representation)
+    canvas.drawPath(
+      flapPath,
+      stroke
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+
+    // Bottom lines
     for (int i = 0; i < 3; i++) {
-      final y = h * 0.62 + i * h * 0.1;
-      final xEnd = i == 2 ? w * 0.55 : w * 0.8;
+      final y =
+          h * 0.62 +
+              i * h * 0.1;
+
+      final xEnd =
+      i == 2
+          ? w * 0.55
+          : w * 0.8;
+
       canvas.drawLine(
-        Offset(w * 0.15, y),
-        Offset(xEnd, y),
-        stroke..color = AppColors.gold.withOpacity(0.4)..strokeWidth = 1.5,
+        Offset(
+          w * 0.15,
+          y,
+        ),
+        Offset(
+          xEnd,
+          y,
+        ),
+        stroke
+          ..color =
+          AppColors.gold.withOpacity(0.4)
+          ..strokeWidth = 1.5,
       );
     }
 
-    // Lock icon on top
-    canvas.drawCircle(Offset(w / 2, h * 0.15), w * 0.18, gold);
-    canvas.drawCircle(Offset(w / 2, h * 0.15), w * 0.18,
-        stroke..color = AppColors.primaryDark..style = PaintingStyle.stroke..strokeWidth = 1.5);
+    // Lock circle
+    canvas.drawCircle(
+      Offset(
+        w / 2,
+        h * 0.15,
+      ),
+      w * 0.18,
+      gold,
+    );
 
-    // Lock icon detail
-    final lockBody = Paint()..color = AppColors.primaryDark..style = PaintingStyle.fill;
+    canvas.drawCircle(
+      Offset(
+        w / 2,
+        h * 0.15,
+      ),
+      w * 0.18,
+      stroke
+        ..color = AppColors.primaryDark
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+
+    // Lock body
+    final lockBody = Paint()
+      ..color = AppColors.primaryDark
+      ..style = PaintingStyle.fill;
+
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(w / 2 - w * 0.07, h * 0.11, w * 0.14, h * 0.1),
+        Rect.fromLTWH(
+          w / 2 - w * 0.07,
+          h * 0.11,
+          w * 0.14,
+          h * 0.1,
+        ),
         const Radius.circular(3),
       ),
       lockBody,
@@ -251,5 +471,9 @@ class _KeyPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(
+      covariant CustomPainter oldDelegate,
+      ) {
+    return false;
+  }
 }

@@ -1,13 +1,16 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 import 'package:provider/provider.dart';
+
 import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import 'login_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String email;
@@ -23,19 +26,23 @@ class OtpScreen extends StatefulWidget {
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
+class _OtpScreenState extends State<OtpScreen>
+    with TickerProviderStateMixin {
   final _otpController = TextEditingController();
+
   String _currentOtp = '';
 
   bool _isVerifying = false;
   bool _isResending = false;
   bool _blockAutoVerify = false;
   bool _isVerified = false;
+
   String? _errorMessage;
   String? _successMessage;
 
   static const int _resendSeconds = 60;
   int _countdown = _resendSeconds;
+
   Timer? _timer;
 
   late final AnimationController _shakeController;
@@ -48,24 +55,52 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
+    // Fade animation
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
-    _fadeAnim = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
+
+    _fadeAnim = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+
     _fadeController.forward();
 
+    // Shake animation for invalid OTP
     _shakeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
+
     _shakeAnim = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0, end: -8), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 2),
-      TweenSequenceItem(tween: Tween(begin: 8, end: -6), weight: 2),
-      TweenSequenceItem(tween: Tween(begin: -6, end: 6), weight: 2),
-      TweenSequenceItem(tween: Tween(begin: 6, end: 0), weight: 1),
-    ]).animate(CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut));
+      TweenSequenceItem(
+        tween: Tween(begin: 0, end: -8),
+        weight: 1,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: -8, end: 8),
+        weight: 2,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 8, end: -6),
+        weight: 2,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: -6, end: 6),
+        weight: 2,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: 6, end: 0),
+        weight: 1,
+      ),
+    ]).animate(
+      CurvedAnimation(
+        parent: _shakeController,
+        curve: Curves.easeInOut,
+      ),
+    );
 
     _startCountdown();
   }
@@ -76,26 +111,48 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     _fadeController.dispose();
     _shakeController.dispose();
     _otpController.dispose();
+
     super.dispose();
   }
 
   void _startCountdown() {
     _timer?.cancel();
-    setState(() => _countdown = _resendSeconds);
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_countdown <= 1) {
-        t.cancel();
-        if (mounted) setState(() => _countdown = 0);
-      } else {
-        if (mounted) setState(() => _countdown--);
-      }
+
+    setState(() {
+      _countdown = _resendSeconds;
     });
+
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+          (timer) {
+        if (_countdown <= 1) {
+          timer.cancel();
+
+          if (mounted) {
+            setState(() {
+              _countdown = 0;
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _countdown--;
+            });
+          }
+        }
+      },
+    );
   }
 
   Future<void> _handleVerify() async {
-    if (_currentOtp.length < 6 || _isVerifying || _blockAutoVerify) return;
+    if (_currentOtp.length < 6 ||
+        _isVerifying ||
+        _blockAutoVerify) {
+      return;
+    }
 
     FocusScope.of(context).unfocus();
+
     setState(() {
       _isVerifying = true;
       _errorMessage = null;
@@ -108,24 +165,38 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           email: widget.email,
           otp: _currentOtp,
         );
-        if (!mounted) return;
-        setState(() => _successMessage = 'OTP verified! Redirecting...');
-        await Future.delayed(const Duration(milliseconds: 1200));
-        if (!mounted) return;
-        Navigator.pop(context, _currentOtp);
-      } else {
-        await context.read<AuthProvider>().verifyOtp(otp: _currentOtp);
+
         if (!mounted) return;
 
-        // ✅ Show success state — button na lang ang gagamitin para sa SignIn
         setState(() {
-          _successMessage = 'Email verified successfully!';
+          _successMessage = 'OTP verified! Redirecting...';
+        });
+
+        await Future.delayed(
+          const Duration(milliseconds: 1200),
+        );
+
+        if (!mounted) return;
+
+        Navigator.pop(context, _currentOtp);
+      } else {
+        await context.read<AuthProvider>().verifyOtp(
+          otp: _currentOtp,
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          _successMessage =
+          'Email verified successfully!';
           _isVerified = true;
         });
       }
     } on ApiException catch (e) {
       if (!mounted) return;
+
       _shakeController.forward(from: 0);
+
       setState(() {
         _errorMessage = e.message.contains('expired')
             ? 'OTP has expired. Please request a new one.'
@@ -134,25 +205,37 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
             e.message.contains('Incorrect')
             ? 'Incorrect OTP. Please try again.'
             : e.message;
+
         _currentOtp = '';
         _blockAutoVerify = true;
       });
+
       _otpController.clear();
     } catch (_) {
       if (!mounted) return;
+
       setState(() {
-        _errorMessage = 'Something went wrong. Please try again.';
+        _errorMessage =
+        'Something went wrong. Please try again.';
+
         _currentOtp = '';
         _blockAutoVerify = true;
       });
+
       _otpController.clear();
     } finally {
-      if (mounted) setState(() => _isVerifying = false);
+      if (mounted) {
+        setState(() {
+          _isVerifying = false;
+        });
+      }
     }
   }
 
   Future<void> _handleResend() async {
-    if (_countdown > 0 || _isResending) return;
+    if (_countdown > 0 || _isResending) {
+      return;
+    }
 
     setState(() {
       _isResending = true;
@@ -162,44 +245,98 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     });
 
     try {
-      await context.read<AuthProvider>().resendOtp();
+      if (widget.isPasswordReset) {
+        await context
+            .read<AuthProvider>()
+            .resendPasswordResetOtp(
+          email: widget.email,
+        );
+      } else {
+        await context
+            .read<AuthProvider>()
+            .resendOtp();
+      }
+
       if (!mounted) return;
+
       setState(() {
-        _successMessage = 'New OTP sent to ${_maskEmail(widget.email)}.';
+        _successMessage =
+        'New OTP sent to ${_maskEmail(widget.email)}.';
         _currentOtp = '';
       });
+
       _otpController.clear();
+
       _startCountdown();
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.message);
+
+      setState(() {
+        _errorMessage = e.message;
+      });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Could not resend OTP. Please try again.');
+
+      setState(() {
+        _errorMessage =
+        'Could not resend OTP. Please try again.';
+      });
     } finally {
-      if (mounted) setState(() => _isResending = false);
+      if (mounted) {
+        setState(() {
+          _isResending = false;
+        });
+      }
     }
   }
 
   String _maskEmail(String email) {
     final parts = email.split('@');
-    if (parts.length != 2) return email;
+
+    if (parts.length != 2) {
+      return email;
+    }
+
     final name = parts[0];
     final domain = parts[1];
-    if (name.length <= 3) return '*${'*' * (name.length - 1)}@$domain';
-    return '${name.substring(0, 2)}${'*' * (name.length - 2)}@$domain';
+
+    if (name.length <= 3) {
+      return '*${'*' * (name.length - 1)}@$domain';
+    }
+
+    return '${name.substring(0, 2)}'
+        '${'*' * (name.length - 2)}'
+        '@$domain';
+  }
+
+  // ============================================================
+  // GO TO SIGN IN
+  // ============================================================
+
+  void _goToSignIn() {
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
+          (route) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+
     final isWide = size.width >= 600;
     final isCompact = size.height < 680;
 
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -207,13 +344,18 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            size: 18,
+          ),
           color: AppColors.textPrimary,
           onPressed: () => Navigator.pop(context),
           tooltip: 'Back',
         ),
         title: Text(
-          widget.isPasswordReset ? 'Reset Password' : 'Verify Email',
+          widget.isPasswordReset
+              ? 'Reset Password'
+              : 'Verify Email',
           style: GoogleFonts.playfairDisplaySc(
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -227,37 +369,58 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           child: isWide
               ? Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: _buildContent(context, isCompact),
+              constraints:
+              const BoxConstraints(maxWidth: 480),
+              child: _buildContent(
+                context,
+                isCompact,
+              ),
             ),
           )
-              : _buildContent(context, isCompact),
+              : _buildContent(
+            context,
+            isCompact,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, bool isCompact) {
+  Widget _buildContent(
+      BuildContext context,
+      bool isCompact,
+      ) {
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
         AppSpacing.lg,
-        isCompact ? AppSpacing.md : AppSpacing.xxl,
+        isCompact
+            ? AppSpacing.md
+            : AppSpacing.xxl,
         AppSpacing.lg,
         AppSpacing.xxl,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment:
+        CrossAxisAlignment.center,
         children: [
-          SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
+          SizedBox(
+            height: isCompact
+                ? AppSpacing.lg
+                : AppSpacing.xl,
+          ),
 
           Text(
-            widget.isPasswordReset ? 'Check your inbox' : 'One last step',
+            widget.isPasswordReset
+                ? 'Check your inbox'
+                : 'One last step',
             style: AppTextStyles.display2(context),
             textAlign: TextAlign.center,
           ),
 
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(
+            height: AppSpacing.sm,
+          ),
 
           RichText(
             textAlign: TextAlign.center,
@@ -268,7 +431,9 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                 height: 1.5,
               ),
               children: [
-                const TextSpan(text: 'We sent a 6-digit code to\n'),
+                const TextSpan(
+                  text: 'We sent a 6-digit code to\n',
+                ),
                 TextSpan(
                   text: _maskEmail(widget.email),
                   style: GoogleFonts.karla(
@@ -281,21 +446,39 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
+          SizedBox(
+            height: isCompact
+                ? AppSpacing.lg
+                : AppSpacing.xl,
+          ),
 
-          // Status banners
+          // Error message
           if (_errorMessage != null) ...[
-            StatusBanner(message: _errorMessage!, isError: true),
-            const SizedBox(height: AppSpacing.md),
-          ],
-          if (_successMessage != null) ...[
-            StatusBanner(message: _successMessage!, isError: false),
-            const SizedBox(height: AppSpacing.md),
+            StatusBanner(
+              message: _errorMessage!,
+              isError: true,
+            ),
+            const SizedBox(
+              height: AppSpacing.md,
+            ),
           ],
 
-          // Loading spinner habang nag-veverify
+          // Success message
+          if (_successMessage != null) ...[
+            StatusBanner(
+              message: _successMessage!,
+              isError: false,
+            ),
+            const SizedBox(
+              height: AppSpacing.md,
+            ),
+          ],
+
+          // Loading spinner
           if (_isVerifying) ...[
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(
+              height: AppSpacing.sm,
+            ),
             const SizedBox(
               width: 24,
               height: 24,
@@ -304,36 +487,59 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
                 strokeWidth: 2.5,
               ),
             ),
-            const SizedBox(height: AppSpacing.sm),
+            const SizedBox(
+              height: AppSpacing.sm,
+            ),
           ],
 
-          // OTP Input — itago kapag verified na para maiwasan ang
-          // "TextEditingController used after being disposed" error
+          // OTP input
           if (!_isVerified)
             AnimatedBuilder(
               animation: _shakeAnim,
-              builder: (_, child) => Transform.translate(
-                offset: Offset(_shakeAnim.value, 0),
-                child: child,
-              ),
+              builder: (_, child) {
+                return Transform.translate(
+                  offset: Offset(
+                    _shakeAnim.value,
+                    0,
+                  ),
+                  child: child,
+                );
+              },
               child: _buildOtpField(context),
             ),
 
-          SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
+          SizedBox(
+            height: isCompact
+                ? AppSpacing.lg
+                : AppSpacing.xl,
+          ),
 
-          // Kapag verified na — ipakita ang Go to Sign In button
-          // Kapag hindi pa — ipakita ang resend section
+          // ======================================================
+          // VERIFIED STATE
+          // ======================================================
+
           if (_isVerified) ...[
-            const SizedBox(height: AppSpacing.md),
+            const SizedBox(
+              height: AppSpacing.md,
+            ),
+
             PrimaryButton(
               label: 'GO TO SIGN IN',
-              onPressed: () async {
-                await context.read<AuthProvider>().logout();
-              },
+              onPressed: _goToSignIn,
             ),
-          ] else ...[
+          ]
+
+          // ======================================================
+          // NOT VERIFIED STATE
+          // ======================================================
+
+          else ...[
             _buildResendSection(context),
-            const SizedBox(height: AppSpacing.xl),
+
+            const SizedBox(
+              height: AppSpacing.xl,
+            ),
+
             Text(
               'Check your spam folder if you don\'t see it.',
               style: AppTextStyles.caption(context),
@@ -345,31 +551,52 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildOtpField(BuildContext context) {
+  Widget _buildOtpField(
+      BuildContext context,
+      ) {
     return PinCodeTextField(
       appContext: context,
       length: 6,
       controller: _otpController,
       keyboardType: TextInputType.number,
       animationType: AnimationType.scale,
-      animationDuration: const Duration(milliseconds: 150),
+      animationDuration:
+      const Duration(milliseconds: 150),
       enableActiveFill: true,
       autoFocus: true,
       enabled: !_isVerifying,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+      ],
       pinTheme: PinTheme(
         shape: PinCodeFieldShape.box,
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderRadius:
+        BorderRadius.circular(AppRadius.md),
         fieldHeight: 56,
         fieldWidth: 46,
-        activeFillColor: AppColors.inputFill,
-        inactiveFillColor: AppColors.inputFill,
-        selectedFillColor: AppColors.surfaceWarm,
-        activeColor: AppColors.gold,
-        inactiveColor: AppColors.inputBorder,
-        selectedColor: AppColors.primary,
+
+        activeFillColor:
+        AppColors.inputFill,
+
+        inactiveFillColor:
+        AppColors.inputFill,
+
+        selectedFillColor:
+        AppColors.surfaceWarm,
+
+        activeColor:
+        AppColors.gold,
+
+        inactiveColor:
+        AppColors.inputBorder,
+
+        selectedColor:
+        AppColors.primary,
+
         borderWidth: 2,
-        errorBorderColor: AppColors.error,
+
+        errorBorderColor:
+        AppColors.error,
       ),
       textStyle: GoogleFonts.playfairDisplaySc(
         fontSize: 22,
@@ -380,25 +607,42 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       onChanged: (val) {
         setState(() {
           _currentOtp = val;
-          if (_errorMessage != null) _errorMessage = null;
-          if (_successMessage != null) _successMessage = null;
-          if (_blockAutoVerify) _blockAutoVerify = false;
+
+          if (_errorMessage != null) {
+            _errorMessage = null;
+          }
+
+          if (_successMessage != null) {
+            _successMessage = null;
+          }
+
+          if (_blockAutoVerify) {
+            _blockAutoVerify = false;
+          }
         });
       },
       onCompleted: (_) {
-        if (!_blockAutoVerify) _handleVerify();
+        if (!_blockAutoVerify) {
+          _handleVerify();
+        }
       },
     );
   }
 
-  Widget _buildResendSection(BuildContext context) {
+  Widget _buildResendSection(
+      BuildContext context,
+      ) {
     return Column(
       children: [
         Text(
           'Didn\'t receive the code?',
           style: AppTextStyles.bodyMedium(context),
         ),
-        const SizedBox(height: AppSpacing.sm),
+
+        const SizedBox(
+          height: AppSpacing.sm,
+        ),
+
         _countdown > 0
             ? Text(
           'Resend in $_countdown s',
@@ -409,19 +653,23 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           ),
         )
             : GestureDetector(
-          onTap: _isResending ? null : _handleResend,
+          onTap: _isResending
+              ? null
+              : _handleResend,
           child: _isResending
               ? const SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(
+            child:
+            CircularProgressIndicator(
               color: AppColors.gold,
               strokeWidth: 2,
             ),
           )
               : Text(
             'Resend Code',
-            style: AppTextStyles.link(context),
+            style:
+            AppTextStyles.link(context),
           ),
         ),
       ],
@@ -431,51 +679,154 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
 
 class _BigLanternPainter extends CustomPainter {
   @override
-  void paint(Canvas canvas, Size size) {
+  void paint(
+      Canvas canvas,
+      Size size,
+      ) {
     final maroonFill = Paint()
       ..color = AppColors.primaryDark
       ..style = PaintingStyle.fill;
+
     final goldStroke = Paint()
       ..color = AppColors.gold
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
+
     final goldFill = Paint()
       ..color = AppColors.gold
       ..style = PaintingStyle.fill;
+
     final w = size.width;
     final h = size.height;
 
-    canvas.drawLine(Offset(w / 2, 0), Offset(w / 2, h * 0.08),
-        Paint()..color = AppColors.gold..strokeWidth = 1.5..strokeCap = StrokeCap.round);
-    canvas.drawRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(w * 0.2, h * 0.06, w * 0.6, h * 0.1), const Radius.circular(4)), goldFill);
+    canvas.drawLine(
+      Offset(w / 2, 0),
+      Offset(w / 2, h * 0.08),
+      Paint()
+        ..color = AppColors.gold
+        ..strokeWidth = 1.5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          w * 0.2,
+          h * 0.06,
+          w * 0.6,
+          h * 0.1,
+        ),
+        const Radius.circular(4),
+      ),
+      goldFill,
+    );
+
     final bodyPath = Path()
-      ..moveTo(w * 0.1, h * 0.2)
-      ..quadraticBezierTo(0, h * 0.5, w * 0.1, h * 0.78)
-      ..lineTo(w * 0.9, h * 0.78)
-      ..quadraticBezierTo(w, h * 0.5, w * 0.9, h * 0.2)
+      ..moveTo(
+        w * 0.1,
+        h * 0.2,
+      )
+      ..quadraticBezierTo(
+        0,
+        h * 0.5,
+        w * 0.1,
+        h * 0.78,
+      )
+      ..lineTo(
+        w * 0.9,
+        h * 0.78,
+      )
+      ..quadraticBezierTo(
+        w,
+        h * 0.5,
+        w * 0.9,
+        h * 0.2,
+      )
       ..close();
-    canvas.drawPath(bodyPath, maroonFill);
-    canvas.drawPath(bodyPath, goldStroke);
+
+    canvas.drawPath(
+      bodyPath,
+      maroonFill,
+    );
+
+    canvas.drawPath(
+      bodyPath,
+      goldStroke,
+    );
+
     for (int i = 1; i <= 3; i++) {
-      final y = h * 0.2 + (h * 0.58) * (i / 4);
-      canvas.drawLine(Offset(w * 0.1, y), Offset(w * 0.9, y),
-          goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1);
+      final y =
+          h * 0.2 +
+              (h * 0.58) * (i / 4);
+
+      canvas.drawLine(
+        Offset(w * 0.1, y),
+        Offset(w * 0.9, y),
+        goldStroke
+          ..color =
+          AppColors.gold.withOpacity(0.3)
+          ..strokeWidth = 1,
+      );
     }
-    canvas.drawLine(Offset(w / 2, h * 0.2), Offset(w / 2, h * 0.78),
-        goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1);
-    canvas.drawRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(w * 0.2, h * 0.76, w * 0.6, h * 0.08), const Radius.circular(4)), goldFill);
-    final tasselPaint = Paint()..color = AppColors.gold..strokeWidth = 1.2..strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+      Offset(w / 2, h * 0.2),
+      Offset(w / 2, h * 0.78),
+      goldStroke
+        ..color =
+        AppColors.gold.withOpacity(0.3)
+        ..strokeWidth = 1,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          w * 0.2,
+          h * 0.76,
+          w * 0.6,
+          h * 0.08,
+        ),
+        const Radius.circular(4),
+      ),
+      goldFill,
+    );
+
+    final tasselPaint = Paint()
+      ..color = AppColors.gold
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
     for (int i = 0; i < 5; i++) {
-      final x = w * 0.3 + i * w * 0.1;
-      canvas.drawLine(Offset(x, h * 0.84), Offset(x + (i % 2 == 0 ? -4 : 4), h), tasselPaint);
+      final x =
+          w * 0.3 + i * w * 0.1;
+
+      canvas.drawLine(
+        Offset(x, h * 0.84),
+        Offset(
+          x + (i % 2 == 0 ? -4 : 4),
+          h,
+        ),
+        tasselPaint,
+      );
     }
-    canvas.drawCircle(Offset(w / 2, h * 0.49), w * 0.06,
-        Paint()..color = AppColors.goldLight.withOpacity(0.5));
+
+    canvas.drawCircle(
+      Offset(
+        w / 2,
+        h * 0.49,
+      ),
+      w * 0.06,
+      Paint()
+        ..color =
+        AppColors.goldLight.withOpacity(0.5),
+    );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(
+      covariant CustomPainter oldDelegate,
+      ) {
+    return false;
+  }
 }
