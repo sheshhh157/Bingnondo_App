@@ -41,16 +41,10 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    // FIX C: May token pero wala pang user object — i-fetch muna ang user
-    // para may laman ang _user kapag nag-navigate sa home.
-    // Sa ngayon, i-set na lang as authenticated — mag-aadopt ng lazy load
-    // kapag may /me endpoint na tayo sa susunod na sprint.
-    // Pero i-verify muna na valid ang token structure bago mag-authenticated.
     try {
       _status = AuthStatus.authenticated;
       notifyListeners();
     } catch (_) {
-      // Token corrupted or invalid — mag-logout
       await _api.clearTokens();
       _status = AuthStatus.unauthenticated;
       notifyListeners();
@@ -73,7 +67,6 @@ class AuthProvider extends ChangeNotifier {
       password: password,
     );
 
-    // FIX B: I-check kung may user sa response bago i-set
     if (response.user == null) {
       throw const ApiException(
         'Login failed. Please try again.',
@@ -91,7 +84,6 @@ class AuthProvider extends ChangeNotifier {
 
     final inputEmail = email.trim().toLowerCase();
     final inputPassword = password.trim();
-
     final targetEmail = kMockEmail.trim().toLowerCase();
     final targetPassword = kMockPassword.trim();
 
@@ -138,18 +130,10 @@ class AuthProvider extends ChangeNotifier {
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 600));
       if (otp.length == 6) {
-        _user = CustomerUser.fromJson({
-          ...kMockUser,
-          'email': _pendingEmail,
-          'email_verified': true,
-        });
-        _status = AuthStatus.authenticated;
-        _pendingEmail = null;
-        notifyListeners();
+        return;
       } else {
         throw const ApiException('Invalid OTP.', statusCode: 422);
       }
-      return;
     }
 
     final response = await _api.verifyOtp(
@@ -157,8 +141,6 @@ class AuthProvider extends ChangeNotifier {
       otp: otp,
     );
 
-    // FIX B: I-check kung may user sa response bago i-set
-    // Kung walang user (hindi dapat mangyari), throw error
     if (response.user == null) {
       throw const ApiException(
         'Verification failed. Please try again.',
@@ -166,13 +148,8 @@ class AuthProvider extends ChangeNotifier {
       );
     }
 
-    // FIX C: I-set ang user object BAGO i-set ang status
-    // Para kapag nag-notify ang listeners at nag-navigate sa home,
-    // nandun na ang user data.
-    _user = response.user;
-    _pendingEmail = null;
-    _status = AuthStatus.authenticated;
-    notifyListeners();
+    await _api.clearTokens();
+    _user = null;
   }
 
   Future<void> verifyPasswordResetOtp({

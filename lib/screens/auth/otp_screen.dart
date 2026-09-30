@@ -30,6 +30,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   bool _isVerifying = false;
   bool _isResending = false;
   bool _blockAutoVerify = false;
+  bool _isVerified = false;
   String? _errorMessage;
   String? _successMessage;
 
@@ -108,11 +109,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           otp: _currentOtp,
         );
         if (!mounted) return;
-
-        // ✅ Tama — may success message, babalik sa sign in
-        setState(() {
-          _successMessage = 'OTP verified! Redirecting...';
-        });
+        setState(() => _successMessage = 'OTP verified! Redirecting...');
         await Future.delayed(const Duration(milliseconds: 1200));
         if (!mounted) return;
         Navigator.pop(context, _currentOtp);
@@ -120,15 +117,11 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
         await context.read<AuthProvider>().verifyOtp(otp: _currentOtp);
         if (!mounted) return;
 
-        // ✅ Tama — may success message, babalik sa sign in page
+        // ✅ Show success state — button na lang ang gagamitin para sa SignIn
         setState(() {
-          _successMessage = 'Email verified! Please sign in to continue.';
+          _successMessage = 'Email verified successfully!';
+          _isVerified = true;
         });
-        await Future.delayed(const Duration(milliseconds: 1500));
-        if (!mounted) return;
-
-        // Balik sa sign in — pop lahat hanggang sa first route (sign in screen)
-        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -300,7 +293,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
             const SizedBox(height: AppSpacing.md),
           ],
 
-          // Loading indicator kapag nag-veverify
+          // Loading spinner habang nag-veverify
           if (_isVerifying) ...[
             const SizedBox(height: AppSpacing.sm),
             const SizedBox(
@@ -314,28 +307,39 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
             const SizedBox(height: AppSpacing.sm),
           ],
 
-          // OTP Input
-          AnimatedBuilder(
-            animation: _shakeAnim,
-            builder: (_, child) => Transform.translate(
-              offset: Offset(_shakeAnim.value, 0),
-              child: child,
+          // OTP Input — itago kapag verified na para maiwasan ang
+          // "TextEditingController used after being disposed" error
+          if (!_isVerified)
+            AnimatedBuilder(
+              animation: _shakeAnim,
+              builder: (_, child) => Transform.translate(
+                offset: Offset(_shakeAnim.value, 0),
+                child: child,
+              ),
+              child: _buildOtpField(context),
             ),
-            child: _buildOtpField(context),
-          ),
 
           SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
 
-          // Resend section
-          _buildResendSection(context),
-
-          const SizedBox(height: AppSpacing.xl),
-
-          Text(
-            'Check your spam folder if you don\'t see it.',
-            style: AppTextStyles.caption(context),
-            textAlign: TextAlign.center,
-          ),
+          // Kapag verified na — ipakita ang Go to Sign In button
+          // Kapag hindi pa — ipakita ang resend section
+          if (_isVerified) ...[
+            const SizedBox(height: AppSpacing.md),
+            PrimaryButton(
+              label: 'GO TO SIGN IN',
+              onPressed: () async {
+                await context.read<AuthProvider>().logout();
+              },
+            ),
+          ] else ...[
+            _buildResendSection(context),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              'Check your spam folder if you don\'t see it.',
+              style: AppTextStyles.caption(context),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
       ),
     );
@@ -351,7 +355,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       animationDuration: const Duration(milliseconds: 150),
       enableActiveFill: true,
       autoFocus: true,
-      enabled: !_isVerifying, // Hindi na pwedeng mag-type habang nag-veverify
+      enabled: !_isVerifying,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       pinTheme: PinTheme(
         shape: PinCodeFieldShape.box,
@@ -376,19 +380,13 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
       onChanged: (val) {
         setState(() {
           _currentOtp = val;
-          // I-clear ang messages kapag nag-type ulit
           if (_errorMessage != null) _errorMessage = null;
           if (_successMessage != null) _successMessage = null;
-          // I-lift ang block kapag nag-type ulit ang user
           if (_blockAutoVerify) _blockAutoVerify = false;
         });
       },
       onCompleted: (_) {
-        // Auto-verify kapag kumpleto na ang 6 digits
-        // at hindi naka-block (i.e. hindi galing sa error clear)
-        if (!_blockAutoVerify) {
-          _handleVerify();
-        }
+        if (!_blockAutoVerify) _handleVerify();
       },
     );
   }
@@ -437,35 +435,21 @@ class _BigLanternPainter extends CustomPainter {
     final maroonFill = Paint()
       ..color = AppColors.primaryDark
       ..style = PaintingStyle.fill;
-
     final goldStroke = Paint()
       ..color = AppColors.gold
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
-
     final goldFill = Paint()
       ..color = AppColors.gold
       ..style = PaintingStyle.fill;
-
     final w = size.width;
     final h = size.height;
 
-    canvas.drawLine(
-      Offset(w / 2, 0),
-      Offset(w / 2, h * 0.08),
-      Paint()
-        ..color = AppColors.gold
-        ..strokeWidth = 1.5
-        ..strokeCap = StrokeCap.round,
-    );
-
-    final capRect = Rect.fromLTWH(w * 0.2, h * 0.06, w * 0.6, h * 0.1);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(capRect, const Radius.circular(4)),
-      goldFill,
-    );
-
+    canvas.drawLine(Offset(w / 2, 0), Offset(w / 2, h * 0.08),
+        Paint()..color = AppColors.gold..strokeWidth = 1.5..strokeCap = StrokeCap.round);
+    canvas.drawRRect(RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.2, h * 0.06, w * 0.6, h * 0.1), const Radius.circular(4)), goldFill);
     final bodyPath = Path()
       ..moveTo(w * 0.1, h * 0.2)
       ..quadraticBezierTo(0, h * 0.5, w * 0.1, h * 0.78)
@@ -474,46 +458,22 @@ class _BigLanternPainter extends CustomPainter {
       ..close();
     canvas.drawPath(bodyPath, maroonFill);
     canvas.drawPath(bodyPath, goldStroke);
-
     for (int i = 1; i <= 3; i++) {
       final y = h * 0.2 + (h * 0.58) * (i / 4);
-      canvas.drawLine(
-        Offset(w * 0.1, y),
-        Offset(w * 0.9, y),
-        goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1,
-      );
+      canvas.drawLine(Offset(w * 0.1, y), Offset(w * 0.9, y),
+          goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1);
     }
-
-    canvas.drawLine(
-      Offset(w / 2, h * 0.2),
-      Offset(w / 2, h * 0.78),
-      goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1,
-    );
-
-    final botCapRect = Rect.fromLTWH(w * 0.2, h * 0.76, w * 0.6, h * 0.08);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(botCapRect, const Radius.circular(4)),
-      goldFill,
-    );
-
-    final tasselPaint = Paint()
-      ..color = AppColors.gold
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(w / 2, h * 0.2), Offset(w / 2, h * 0.78),
+        goldStroke..color = AppColors.gold.withOpacity(0.3)..strokeWidth = 1);
+    canvas.drawRRect(RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * 0.2, h * 0.76, w * 0.6, h * 0.08), const Radius.circular(4)), goldFill);
+    final tasselPaint = Paint()..color = AppColors.gold..strokeWidth = 1.2..strokeCap = StrokeCap.round;
     for (int i = 0; i < 5; i++) {
       final x = w * 0.3 + i * w * 0.1;
-      canvas.drawLine(
-        Offset(x, h * 0.84),
-        Offset(x + (i % 2 == 0 ? -4 : 4), h),
-        tasselPaint,
-      );
+      canvas.drawLine(Offset(x, h * 0.84), Offset(x + (i % 2 == 0 ? -4 : 4), h), tasselPaint);
     }
-
-    canvas.drawCircle(
-      Offset(w / 2, h * 0.49),
-      w * 0.06,
-      Paint()..color = AppColors.goldLight.withOpacity(0.5),
-    );
+    canvas.drawCircle(Offset(w / 2, h * 0.49), w * 0.06,
+        Paint()..color = AppColors.goldLight.withOpacity(0.5));
   }
 
   @override
