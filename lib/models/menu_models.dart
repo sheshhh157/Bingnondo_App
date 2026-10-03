@@ -130,11 +130,17 @@ class ChatMessage {
   );
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    // Backend returns: { id, sender: 'customer'|'bot', content, sent_at }
+    // 'sender' field: 'customer' maps to user, 'bot' maps to bot.
+    // Falls back to 'role' key for forward compatibility.
+    final senderRaw = json['sender'] as String? ?? json['role'] as String? ?? 'bot';
+    final isSenderCustomer = senderRaw == 'customer' || senderRaw == 'user';
+    final timestampRaw = json['sent_at'] as String? ?? json['created_at'] as String?;
     return ChatMessage(
       id: json['id'].toString(),
       content: json['content'] as String,
-      sender: json['role'] == 'user' ? MessageSender.user : MessageSender.bot,
-      timestamp: DateTime.parse(json['created_at'] as String),
+      sender: isSenderCustomer ? MessageSender.user : MessageSender.bot,
+      timestamp: timestampRaw != null ? DateTime.parse(timestampRaw) : DateTime.now(),
     );
   }
 }
@@ -146,11 +152,21 @@ class ChatHistory {
   const ChatHistory({required this.conversationId, required this.messages});
 
   factory ChatHistory.fromJson(Map<String, dynamic> json) {
-    final msgs = (json['messages'] as List<dynamic>? ?? [])
+    // Backend GET /api/chatbot/history returns:
+    // { messages: [ { id, sender, content, sent_at, conversation_id } ] }
+    // conversation_id may be absent at root level (it lives per-message row).
+    final rawList = json['messages'] as List<dynamic>? ?? [];
+    final msgs = rawList
         .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
         .toList();
+    // Derive conversationId from root or from the first message row
+    final convId = json['conversation_id']?.toString() ??
+        (rawList.isNotEmpty
+            ? (rawList.first as Map<String, dynamic>)['conversation_id']?.toString()
+            : null) ??
+        '';
     return ChatHistory(
-      conversationId: json['conversation_id'].toString(),
+      conversationId: convId,
       messages: msgs,
     );
   }
