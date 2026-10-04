@@ -88,7 +88,8 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     if (!mounted || cats.isEmpty) return;
     setState(() {
       _tabController.dispose();
-      _tabController = TabController(length: cats.length, vsync: this);
+      // +1 for the "ALL" tab at index 0
+      _tabController = TabController(length: cats.length + 1, vsync: this);
     });
   }
 
@@ -217,14 +218,52 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
         return _buildErrorState(context, menuProvider);
       case MenuLoadState.loaded:
         if (menuProvider.categories.isEmpty) return const _EmptyMenuState();
+        // Tab index 0 = ALL (sections layout), 1..n = individual categories
         return TabBarView(
           controller: _tabController,
-          children: menuProvider.categories.map((cat) {
-            final items = menuProvider.itemsForCategory(cat.id);
-            return _buildCategoryContent(context, items);
-          }).toList(),
+          children: [
+            // ALL tab — one continuous scroll with per-category horizontal rows
+            _buildAllSectionsView(context, menuProvider),
+            // Individual category tabs — same list/grid as before
+            ...menuProvider.categories.map((cat) {
+              final items = menuProvider.itemsForCategory(cat.id);
+              return _buildCategoryContent(context, items);
+            }),
+          ],
         );
     }
+  }
+
+  // ─── ALL tab: vertical scroll, one horizontal row per category ─────────────
+  Widget _buildAllSectionsView(BuildContext context, MenuProvider menuProvider) {
+    final cats = menuProvider.categories;
+    return RefreshIndicator(
+      onRefresh: () => context.read<MenuProvider>().refresh(),
+      color: AppColors.gold,
+      backgroundColor: AppColors.background,
+      child: ListView.separated(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(0, AppSpacing.sm, 0, 120),
+        itemCount: cats.length,
+        separatorBuilder: (_, __) => Divider(
+          height: 1,
+          thickness: 1,
+          indent: AppSpacing.md,
+          endIndent: AppSpacing.md,
+          color: AppColors.border,
+        ),
+        itemBuilder: (ctx, i) {
+          final cat = cats[i];
+          final items = menuProvider.itemsForCategory(cat.id);
+          return _CategorySection(
+            category: cat,
+            items: items,
+            onItemTap: (item) => _showItemDetail(ctx, item),
+            onAddToCart: _handleAddToCart,
+          );
+        },
+      ),
+    );
   }
 
   Widget _buildCategoryContent(BuildContext context, List<MenuItem> items) {
@@ -760,6 +799,8 @@ class _OpenNowPill extends StatelessWidget {
 }
 
 // ─── Category Tab Bar ──────────────────────────────────────────────────────────
+// Layout: pill-style chips in a single horizontal scroll row.
+// Index 0 = "ALL", 1..n = individual categories (matches TabController).
 class _CategoryTabBar extends StatelessWidget {
   final TabController controller;
   final List<MenuCategory> categories;
@@ -768,24 +809,96 @@ class _CategoryTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // All labels: ALL first, then each category name
+    final labels = ['All', ...categories.map((c) => c.name)];
+
     return Container(
       color: AppColors.primaryDark,
+      padding: const EdgeInsets.fromLTRB(0, 6, 0, 10),
       child: TabBar(
         controller: controller,
         isScrollable: true,
         tabAlignment: TabAlignment.start,
-        labelColor: AppColors.gold,
-        unselectedLabelColor: AppColors.textOnDark.withOpacity(0.55),
-        indicatorColor: AppColors.gold,
-        indicatorWeight: 2.5,
+        // Hide the default bottom indicator — we style the chip itself
+        indicator: const BoxDecoration(),
+        indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
-        labelStyle: GoogleFonts.karla(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.3),
-        unselectedLabelStyle: GoogleFonts.karla(
-            fontSize: 13, fontWeight: FontWeight.w400),
-        tabs: categories.map((cat) => Tab(text: cat.name)).toList(),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        tabs: List.generate(labels.length, (i) {
+          // IMPORTANT: must be Tab() so TabBar's internal InkWell handles the tap.
+          // _CategoryChip is purely cosmetic — the chip is the Tab's child.
+          return Tab(
+            child: _CategoryChip(
+              label: labels[i],
+              controller: controller,
+              index: i,
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// Animating pill chip — fills with gold when selected.
+class _CategoryChip extends StatefulWidget {
+  final String label;
+  final TabController controller;
+  final int index;
+  const _CategoryChip(
+      {required this.label, required this.controller, required this.index});
+
+  @override
+  State<_CategoryChip> createState() => _CategoryChipState();
+}
+
+class _CategoryChipState extends State<_CategoryChip> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onTabChange);
+  }
+
+  void _onTabChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTabChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = widget.controller.index == widget.index;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      // No padding here — Tab widget already provides the tap area and height.
+      // Horizontal padding is handled by labelPadding on the TabBar.
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? AppColors.gold
+            : AppColors.textOnDark.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        border: Border.all(
+          color: isSelected
+              ? AppColors.gold
+              : AppColors.textOnDark.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Text(
+        widget.label,
+        style: GoogleFonts.karla(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          color: isSelected ? AppColors.primaryDark : AppColors.textOnDark.withOpacity(0.65),
+          letterSpacing: 0.2,
+        ),
       ),
     );
   }
@@ -1219,24 +1332,24 @@ class _FoodImage extends StatelessWidget {
   }
 
   Widget _ph() => SizedBox(
-        width: width,
-        height: height,
-        child: SvgPicture.asset(
-          'assets/images/menu_placeholder.svg',
-          width: width,
-          height: height,
-          fit: BoxFit.cover,
-          placeholderBuilder: (_) => Container(
-            color: AppColors.surfaceWarm,
-            child: Center(
-              child: CustomPaint(
-                size: const Size(40, 40),
-                painter: _BowlPainter(),
-              ),
-            ),
+    width: width,
+    height: height,
+    child: SvgPicture.asset(
+      'assets/images/menu_placeholder.svg',
+      width: width,
+      height: height,
+      fit: BoxFit.cover,
+      placeholderBuilder: (_) => Container(
+        color: AppColors.surfaceWarm,
+        child: Center(
+          child: CustomPaint(
+            size: const Size(40, 40),
+            painter: _BowlPainter(),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _EmptyMenuState extends StatelessWidget {
@@ -1503,4 +1616,252 @@ class _MiniFabCatPainter extends CustomPainter {
   }
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
+}
+// ─── Category Section (used in ALL tab) ───────────────────────────────────────
+// One section = category header + horizontal scroll row of item cards.
+class _CategorySection extends StatelessWidget {
+  final MenuCategory category;
+  final List<MenuItem> items;
+  final void Function(MenuItem) onItemTap;
+  final void Function(MenuItem) onAddToCart;
+
+  const _CategorySection({
+    required this.category,
+    required this.items,
+    required this.onItemTap,
+    required this.onAddToCart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Section header ──────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  category.name.toUpperCase(),
+                  style: GoogleFonts.playfairDisplaySc(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              if (items.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Text(
+                    '${items.length}',
+                    style: GoogleFonts.karla(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // ── Horizontal scroll row ───────────────────────────────────────────
+        if (items.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+            child: Text(
+              'Nothing here yet.',
+              style: AppTextStyles.bodySmall(context),
+            ),
+          )
+        else
+          SizedBox(
+            height: 210,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm),
+              itemCount: items.length,
+              separatorBuilder: (_, __) =>
+              const SizedBox(width: AppSpacing.sm),
+              itemBuilder: (ctx, i) => _HorizontalMenuItemCard(
+                item: items[i],
+                onTap: () => onItemTap(items[i]),
+                onAdd: () => onAddToCart(items[i]),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ─── Horizontal item card (used inside _CategorySection) ──────────────────────
+// Fixed width card: image on top, name + price + add button below.
+class _HorizontalMenuItemCard extends StatelessWidget {
+  final MenuItem item;
+  final VoidCallback onTap;
+  final VoidCallback onAdd;
+
+  const _HorizontalMenuItemCard({
+    required this.item,
+    required this.onTap,
+    required this.onAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: item.isAvailable ? onTap : null,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 250),
+        opacity: item.isAvailable ? 1.0 : 0.55,
+        child: Container(
+          width: 148,
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            boxShadow: AppShadows.card,
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Image ─────────────────────────────────────────────────────
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(AppRadius.lg),
+                      topRight: Radius.circular(AppRadius.lg),
+                    ),
+                    child: _FoodImage(
+                        url: item.photoUrl,
+                        width: 148,
+                        height: 96),
+                  ),
+                  if (!item.isAvailable)
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(AppRadius.lg),
+                          topRight: Radius.circular(AppRadius.lg),
+                        ),
+                        child: Container(
+                          color: Colors.black.withOpacity(0.38),
+                          alignment: Alignment.center,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              borderRadius:
+                              BorderRadius.circular(AppRadius.pill),
+                            ),
+                            child: Text(
+                              'UNAVAILABLE',
+                              style: GoogleFonts.karla(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+
+              // ── Info ──────────────────────────────────────────────────────
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        style: GoogleFonts.playfairDisplaySc(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (item.description != null) ...[
+                        const SizedBox(height: 2),
+                        Expanded(
+                          child: Text(
+                            item.description!,
+                            style: GoogleFonts.karla(
+                              fontSize: 10,
+                              color: AppColors.textMuted,
+                              height: 1.35,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ] else
+                        const Spacer(),
+                      const SizedBox(height: 5),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '₱${item.price.toStringAsFixed(0)}',
+                            style: GoogleFonts.playfairDisplaySc(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          if (item.isAvailable)
+                            GestureDetector(
+                              onTap: onAdd,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 9, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(
+                                      AppRadius.sm),
+                                ),
+                                child: Text(
+                                  '+ Add',
+                                  style: GoogleFonts.karla(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textOnDark,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
