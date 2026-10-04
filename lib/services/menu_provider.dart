@@ -57,6 +57,8 @@ class MenuProvider extends ChangeNotifier {
     _data = MenuData.fromJson(kMockMenuData);
   }
 
+  // Called per item by SocketService.onMenuUpdate (single-item callback, batched
+  // by socket_service.dart iterating the incoming items array).
   void updateItemAvailability(int itemId, bool isAvailable) {
     if (_data == null) return;
     final updated = _data!.items.map((item) {
@@ -64,6 +66,39 @@ class MenuProvider extends ChangeNotifier {
     }).toList();
     _data = MenuData(categories: _data!.categories, items: updated);
     notifyListeners();
+  }
+
+  // § 1.5 pre-checkout gate — checks live availability for a list of item IDs.
+  // Returns IDs of items that are NOW unavailable so CartScreen can warn the user.
+  // Falls back to local state when mock mode is on or the request fails.
+  Future<List<int>> checkCartAvailability(List<int> itemIds) async {
+    if (kUseMock || itemIds.isEmpty) {
+      // In mock mode, use local state
+      return _data?.items
+          .where((i) => itemIds.contains(i.id) && !i.isAvailable)
+          .map((i) => i.id)
+          .toList() ??
+          [];
+    }
+
+    try {
+      final results = await MenuService.instance.checkAvailability(itemIds);
+      // Update local cache while we're here — free sync
+      for (final r in results) {
+        updateItemAvailability(r['id'] as int, r['is_available'] as bool);
+      }
+      return results
+          .where((r) => r['is_available'] == false)
+          .map((r) => r['id'] as int)
+          .toList();
+    } catch (_) {
+      // Network error — fall back to cached local state; don't block checkout
+      return _data?.items
+          .where((i) => itemIds.contains(i.id) && !i.isAvailable)
+          .map((i) => i.id)
+          .toList() ??
+          [];
+    }
   }
 
   Future<void> refresh() => loadMenu();

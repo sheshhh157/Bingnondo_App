@@ -18,7 +18,9 @@ class MenuCategory {
       id: json['id'] as int,
       name: json['name'] as String,
       description: json['description'] as String?,
-      sortOrder: json['sort_order'] as int? ?? 0,
+      // Backend sends 'display_order' (migration 006); fall back to legacy
+      // 'sort_order' key so mock data still works during dev.
+      sortOrder: json['display_order'] as int? ?? json['sort_order'] as int? ?? 0,
     );
   }
 }
@@ -49,7 +51,8 @@ class MenuItem {
       name: json['name'] as String,
       description: json['description'] as String?,
       price: (json['price'] as num).toDouble(),
-      photoUrl: json['photo_url'] as String?,
+      // Backend sends 'image_url'; fall back to 'photo_url' so mock data works.
+      photoUrl: json['image_url'] as String? ?? json['photo_url'] as String?,
       isAvailable: json['is_available'] as bool? ?? true,
     );
   }
@@ -75,13 +78,45 @@ class MenuData {
   const MenuData({required this.categories, required this.items});
 
   factory MenuData.fromJson(Map<String, dynamic> json) {
-    final cats = (json['categories'] as List<dynamic>? ?? [])
+    // Backend (§ 1.3) returns items NESTED inside each category:
+    //   { categories: [{ id, name, ..., items: [...] }] }
+    //
+    // Mock data uses a flat top-level 'items' list (legacy shape).
+    // We support both: if a category has an 'items' key we use it;
+    // otherwise we fall back to the top-level 'items' list.
+
+    final rawCats = json['categories'] as List<dynamic>? ?? [];
+    final bool isNested = rawCats.isNotEmpty &&
+        (rawCats.first as Map<String, dynamic>).containsKey('items');
+
+    List<MenuItem> allItems;
+
+    if (isNested) {
+      // Real backend shape: flatten items out of each category
+      allItems = rawCats
+          .expand((c) {
+        final cat = c as Map<String, dynamic>;
+        final catItems = cat['items'] as List<dynamic>? ?? [];
+        return catItems.map((i) {
+          final item = Map<String, dynamic>.from(i as Map<String, dynamic>);
+          // Ensure category_id is present (it is in the backend response)
+          item['category_id'] ??= cat['id'];
+          return MenuItem.fromJson(item);
+        });
+      })
+          .toList();
+    } else {
+      // Mock / legacy shape: items at top level
+      allItems = (json['items'] as List<dynamic>? ?? [])
+          .map((i) => MenuItem.fromJson(i as Map<String, dynamic>))
+          .toList();
+    }
+
+    final cats = rawCats
         .map((c) => MenuCategory.fromJson(c as Map<String, dynamic>))
         .toList();
-    final items = (json['items'] as List<dynamic>? ?? [])
-        .map((i) => MenuItem.fromJson(i as Map<String, dynamic>))
-        .toList();
-    return MenuData(categories: cats, items: items);
+
+    return MenuData(categories: cats, items: allItems);
   }
 
   List<MenuItem> itemsForCategory(int categoryId) =>

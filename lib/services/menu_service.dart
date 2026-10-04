@@ -64,6 +64,29 @@ class MenuService {
     }
   }
 
+  // ─── 1.3 Pre-checkout availability check ──────────────────────────────────
+  // POST /api/menu/availability-check  { item_ids: [...] }
+  // Returns List<Map> with { id, name, is_available } per item.
+  Future<List<Map<String, dynamic>>> checkAvailability(List<int> itemIds) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await _client
+          .post(
+        Uri.parse('$_baseUrl/api/menu/availability-check'),
+        headers: headers,
+        body: jsonEncode({'item_ids': itemIds}),
+      )
+          .timeout(_timeout);
+      final data = _handleResponse(response);
+      final items = data['items'] as List<dynamic>? ?? [];
+      return items.cast<Map<String, dynamic>>();
+    } on SocketException {
+      throw const MenuApiException('No internet connection.');
+    } on TimeoutException {
+      throw const MenuApiException('Connection timed out.');
+    }
+  }
+
   // ─── 1.4 Chatbot ──────────────────────────────────────────────────────────
   // POST /api/chatbot/message
   Future<String> sendChatMessage(String message) async {

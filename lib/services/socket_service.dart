@@ -44,13 +44,28 @@ class SocketService {
     );
 
     _socket!
-      ..onConnect((_) => debugPrint('[Socket] Connected'))
+      ..onConnect((_) {
+        debugPrint('[Socket] Connected');
+        // § 1.3 — join the shared menu room so we receive menu_update events.
+        // Must be emitted AFTER connection is established.
+        _socket!.emit('join_menu');
+      })
 
-    // §1.3 — menu availability changes
+    // § 1.3 — real-time menu availability patch
+    // Backend payload: { items: [{ id: int, is_available: bool }, ...] }
+    // The backend may update multiple items in one event (e.g. when an
+    // ingredient runs out and affects several dishes at once).
       ..on('menu_update', (data) {
         try {
-          onMenuUpdate?.call(
-              data['item_id'] as int, data['is_available'] as bool);
+          final raw = data as Map<String, dynamic>;
+          final itemsList = raw['items'] as List<dynamic>? ?? [];
+          for (final entry in itemsList) {
+            final item = entry as Map<String, dynamic>;
+            onMenuUpdate?.call(
+              item['id'] as int,
+              item['is_available'] as bool,
+            );
+          }
         } catch (e) {
           debugPrint('[Socket] menu_update error: $e');
         }
