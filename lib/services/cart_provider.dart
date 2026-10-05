@@ -4,7 +4,8 @@ import '../models/menu_models.dart';
 import '../mock/mock_data.dart';
 import 'cart_service.dart';
 
-enum CheckoutStep { cart, delivery, payment, placing, confirmation }
+// delivery step removed — checkout is now: cart → payment → placing → confirmation
+enum CheckoutStep { cart, payment, placing, confirmation }
 
 enum CartError { none, profileIncomplete, suspended, itemUnavailable, network }
 
@@ -13,35 +14,32 @@ class CartProvider extends ChangeNotifier {
   final List<CartItem> _items = [];
   String? _orderNotes;
 
-  List<CartItem> get items => List.unmodifiable(_items);
-  String? get orderNotes => _orderNotes;
-  bool get isEmpty => _items.isEmpty;
-  int get totalItemCount => _items.fold(0, (sum, i) => sum + i.quantity);
-
-  double get subtotal => _items.fold(0, (sum, i) => sum + i.subtotal);
-  double get totalAmount => subtotal; // delivery fee added by backend; shown as TBD
+  List<CartItem> get items      => List.unmodifiable(_items);
+  String? get orderNotes        => _orderNotes;
+  bool get isEmpty              => _items.isEmpty;
+  int get totalItemCount        => _items.fold(0, (sum, i) => sum + i.quantity);
+  double get subtotal           => _items.fold(0, (sum, i) => sum + i.subtotal);
+  double get totalAmount        => subtotal;
 
   // ─── Checkout state ────────────────────────────────────────────────────────
-  CheckoutStep _step = CheckoutStep.cart;
-  DeliveryPreference _deliveryPreference = DeliveryPreference.ownDelivery;
-  PaymentMethod _paymentMethod = PaymentMethod.gcash;
-  CustomerProfile? _profile;
+  CheckoutStep      _step          = CheckoutStep.cart;
+  PaymentMethod     _paymentMethod = PaymentMethod.gcash;
+  CustomerProfile?  _profile;
   PlaceOrderResponse? _lastOrder;
-  CartError _error = CartError.none;
-  String? _errorMessage;
-  bool _isLoading = false;
+  CartError         _error         = CartError.none;
+  String?           _errorMessage;
+  bool              _isLoading     = false;
 
-  CheckoutStep get step => _step;
-  DeliveryPreference get deliveryPreference => _deliveryPreference;
-  PaymentMethod get paymentMethod => _paymentMethod;
-  CustomerProfile? get profile => _profile;
-  PlaceOrderResponse? get lastOrder => _lastOrder;
-  CartError get error => _error;
-  String? get errorMessage => _errorMessage;
-  bool get isLoading => _isLoading;
+  CheckoutStep      get step          => _step;
+  PaymentMethod     get paymentMethod => _paymentMethod;
+  CustomerProfile?  get profile       => _profile;
+  PlaceOrderResponse? get lastOrder   => _lastOrder;
+  CartError         get error         => _error;
+  String?           get errorMessage  => _errorMessage;
+  bool              get isLoading     => _isLoading;
 
-  bool get canUseCod => _profile?.restrictionLevel.canUseCod ?? true;
-  bool get isSuspended => _profile?.restrictionLevel == RestrictionLevel.suspended;
+  bool get canUseCod    => _profile?.restrictionLevel.canUseCod ?? true;
+  bool get isSuspended  => _profile?.restrictionLevel == RestrictionLevel.suspended;
 
   // ─── Cart Operations ───────────────────────────────────────────────────────
 
@@ -54,9 +52,9 @@ class CartProvider extends ChangeNotifier {
     } else {
       _items.add(CartItem(
         menuItemId: menuItem.id,
-        name: menuItem.name,
-        price: menuItem.price,
-        photoUrl: menuItem.photoUrl,
+        name:       menuItem.name,
+        price:      menuItem.price,
+        photoUrl:   menuItem.photoUrl,
       ));
     }
     _clearError();
@@ -101,15 +99,11 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Flag unavailable items (called when menu_update socket fires)
-  // Returns true if any items were flagged
   bool flagUnavailableItems(List<MenuItem> currentMenu) {
     bool anyFlagged = false;
     for (final item in _items) {
       final menuItem = currentMenu.where((m) => m.id == item.menuItemId).firstOrNull;
-      if (menuItem != null && !menuItem.isAvailable) {
-        anyFlagged = true;
-      }
+      if (menuItem != null && !menuItem.isAvailable) anyFlagged = true;
     }
     return anyFlagged;
   }
@@ -127,25 +121,13 @@ class CartProvider extends ChangeNotifier {
   void clearCart() {
     _items.clear();
     _orderNotes = null;
-    _step = CheckoutStep.cart;
-    _lastOrder = null;
+    _step       = CheckoutStep.cart;
+    _lastOrder  = null;
     _clearError();
     notifyListeners();
   }
 
   // ─── Checkout Flow ─────────────────────────────────────────────────────────
-
-  void setDeliveryPreference(DeliveryPreference pref) {
-    _deliveryPreference = pref;
-    // If COD restricted and switching to COD, block it
-    if (pref == DeliveryPreference.ownDelivery) {
-      // Reset payment if was COD but now restricted
-      if (!canUseCod && _paymentMethod == PaymentMethod.cod) {
-        _paymentMethod = PaymentMethod.gcash;
-      }
-    }
-    notifyListeners();
-  }
 
   void setPaymentMethod(PaymentMethod method) {
     _paymentMethod = method;
@@ -159,22 +141,15 @@ class CartProvider extends ChangeNotifier {
   }
 
   void goBack() {
-    switch (_step) {
-      case CheckoutStep.delivery:
-        _step = CheckoutStep.cart;
-        break;
-      case CheckoutStep.payment:
-        _step = CheckoutStep.delivery;
-        break;
-      default:
-        break;
+    // Only one back step now: payment → cart (pops the screen)
+    if (_step == CheckoutStep.payment) {
+      _step = CheckoutStep.cart;
+      _clearError();
+      notifyListeners();
     }
-    _clearError();
-    notifyListeners();
   }
 
   // ─── Profile Gate Check ────────────────────────────────────────────────────
-  // Called when user taps "Proceed to Checkout" from cart
   Future<bool> checkProfileGate() async {
     _isLoading = true;
     _clearError();
@@ -189,21 +164,21 @@ class CartProvider extends ChangeNotifier {
       }
 
       if (_profile!.restrictionLevel == RestrictionLevel.suspended) {
-        _error = CartError.suspended;
+        _error        = CartError.suspended;
         _errorMessage = 'Your account has been restricted. Please contact Bingnondo Cafe.';
-        _isLoading = false;
+        _isLoading    = false;
         notifyListeners();
         return false;
       }
 
       if (!_profile!.profileCompleted) {
-        _error = CartError.profileIncomplete;
+        _error     = CartError.profileIncomplete;
         _isLoading = false;
         notifyListeners();
         return false;
       }
 
-      // If COD restricted and currently on COD, switch to GCash
+      // If COD-restricted and was on COD, switch to GCash automatically
       if (!_profile!.restrictionLevel.canUseCod && _paymentMethod == PaymentMethod.cod) {
         _paymentMethod = PaymentMethod.gcash;
       }
@@ -212,9 +187,9 @@ class CartProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } on CartApiException catch (e) {
-      _error = CartError.network;
+      _error        = CartError.network;
       _errorMessage = e.message;
-      _isLoading = false;
+      _isLoading    = false;
       notifyListeners();
       return false;
     }
@@ -222,17 +197,16 @@ class CartProvider extends ChangeNotifier {
 
   // ─── Place Order ───────────────────────────────────────────────────────────
   Future<PlaceOrderResponse?> placeOrder() async {
-    _step = CheckoutStep.placing;
+    _step      = CheckoutStep.placing;
     _isLoading = true;
     _clearError();
     notifyListeners();
 
     try {
       final request = PlaceOrderRequest(
-        items: List.from(_items),
-        deliveryPreference: _deliveryPreference,
+        items:        List.from(_items),
         paymentMethod: _paymentMethod,
-        orderNotes: _orderNotes,
+        orderNotes:   _orderNotes,
       );
 
       PlaceOrderResponse response;
@@ -245,22 +219,22 @@ class CartProvider extends ChangeNotifier {
       }
 
       _lastOrder = response;
-      _step = CheckoutStep.confirmation;
+      _step      = CheckoutStep.confirmation;
       _isLoading = false;
       notifyListeners();
       return response;
     } on CartApiException catch (e) {
-      _error = CartError.network;
+      _error        = CartError.network;
       _errorMessage = e.message;
-      _step = CheckoutStep.payment;
-      _isLoading = false;
+      _step         = CheckoutStep.payment;
+      _isLoading    = false;
       notifyListeners();
       return null;
     }
   }
 
   void _clearError() {
-    _error = CartError.none;
+    _error        = CartError.none;
     _errorMessage = null;
   }
 }

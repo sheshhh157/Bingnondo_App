@@ -38,39 +38,6 @@ class CartItem {
   };
 }
 
-// ─── Delivery Preference ──────────────────────────────────────────────────────
-
-enum DeliveryPreference { ownDelivery, lalamove }
-
-extension DeliveryPreferenceX on DeliveryPreference {
-  String get label {
-    switch (this) {
-      case DeliveryPreference.ownDelivery:
-        return 'Cafe Delivery';
-      case DeliveryPreference.lalamove:
-        return 'Lalamove';
-    }
-  }
-
-  String get description {
-    switch (this) {
-      case DeliveryPreference.ownDelivery:
-        return 'Rider arranged by Bingnondo Cafe';
-      case DeliveryPreference.lalamove:
-        return 'Book a Lalamove rider';
-    }
-  }
-
-  String get apiValue {
-    switch (this) {
-      case DeliveryPreference.ownDelivery:
-        return 'own_delivery';
-      case DeliveryPreference.lalamove:
-        return 'lalamove';
-    }
-  }
-}
-
 // ─── Payment Method ───────────────────────────────────────────────────────────
 
 enum PaymentMethod { gcash, cod }
@@ -88,7 +55,7 @@ extension PaymentMethodX on PaymentMethod {
   String get description {
     switch (this) {
       case PaymentMethod.gcash:
-        return 'Pay securely via GCash (PayMongo)';
+        return 'Pay securely via GCash';
       case PaymentMethod.cod:
         return 'Pay cash when your order arrives';
     }
@@ -122,7 +89,7 @@ extension RestrictionLevelX on RestrictionLevel {
     }
   }
 
-  bool get canOrder => this != RestrictionLevel.suspended;
+  bool get canOrder  => this != RestrictionLevel.suspended;
   bool get canUseCod => this != RestrictionLevel.codRestricted && this != RestrictionLevel.suspended;
 }
 
@@ -151,13 +118,13 @@ class CustomerProfile {
 
   factory CustomerProfile.fromJson(Map<String, dynamic> json) {
     return CustomerProfile(
-      id: json['id'] as int,
-      email: json['email'] as String,
+      id:               json['id'] as int,
+      email:            json['email'] as String,
       profileCompleted: json['profile_completed'] as bool? ?? false,
-      firstName: json['first_name'] as String?,
-      lastName: json['last_name'] as String?,
-      mobileNumber: json['mobile_number'] as String?,
-      address: json['address'] as String?,
+      firstName:        json['first_name'] as String?,
+      lastName:         json['last_name'] as String?,
+      mobileNumber:     json['mobile_number'] as String?,
+      address:          json['address'] as String?,
       restrictionLevel: RestrictionLevelX.fromString(
         json['restriction_level'] as String?,
       ),
@@ -175,23 +142,21 @@ class CustomerProfile {
 
 class PlaceOrderRequest {
   final List<CartItem> items;
-  final DeliveryPreference deliveryPreference;
   final PaymentMethod paymentMethod;
   final String? orderNotes;
 
   const PlaceOrderRequest({
     required this.items,
-    required this.deliveryPreference,
     required this.paymentMethod,
     this.orderNotes,
   });
 
   Map<String, dynamic> toJson() => {
-    'order_type': 'online',
-    'order_channel': 'mobile_app',
-    'delivery_preference': deliveryPreference.apiValue,
-    'payment_method': paymentMethod.apiValue,
-    'items': items.map((i) => i.toOrderJson()).toList(),
+    'order_type':          'online',
+    'order_channel':       'mobile_app',
+    'delivery_preference': 'own_delivery', // hardcoded — only one mode supported
+    'payment_method':      paymentMethod.apiValue,
+    'items':               items.map((i) => i.toOrderJson()).toList(),
     if (orderNotes != null && orderNotes!.isNotEmpty) 'notes': orderNotes,
   };
 }
@@ -201,7 +166,7 @@ class PlaceOrderResponse {
   final String orderNumber;
   final String status;
   final double totalAmount;
-  final String? paymentUrl; // GCash PayMongo redirect URL
+  final String? paymentUrl;
 
   const PlaceOrderResponse({
     required this.orderId,
@@ -213,11 +178,11 @@ class PlaceOrderResponse {
 
   factory PlaceOrderResponse.fromJson(Map<String, dynamic> json) {
     return PlaceOrderResponse(
-      orderId: json['id'] as int,
+      orderId:     json['id'] as int,
       orderNumber: json['order_number'] as String,
-      status: json['status'] as String,
+      status:      json['status'] as String,
       totalAmount: (json['total_amount'] as num).toDouble(),
-      paymentUrl: json['payment_url'] as String?,
+      paymentUrl:  json['payment_url'] as String?,
     );
   }
 }

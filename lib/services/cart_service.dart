@@ -1,3 +1,17 @@
+/**
+ * cart_service.dart  —  §1.5 Cart & Checkout API layer
+ * ──────────────────────────────────────────────────────
+ * Covers:
+ *   GET  /api/customer/profile       → fetchProfile()
+ *   PUT  /api/customer/profile       → updateProfile()
+ *   POST /api/orders                 → placeOrder()
+ *
+ * Flip kUseMock = false in mock_data.dart to connect to the real backend.
+ *
+ * GCash receipt upload (POST /api/payments/gcash-receipt) is a separate
+ * service call — see gcash_receipt_service.dart (§ future).
+ */
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -9,26 +23,37 @@ const String _baseUrl = String.fromEnvironment(
   defaultValue: 'http://10.0.2.2:3000',
 );
 
+// ─── Exception ────────────────────────────────────────────────────────────────
+
 class CartApiException implements Exception {
   final String message;
   final int? statusCode;
-  const CartApiException(this.message, {this.statusCode});
+  final String? code; // backend error code, e.g. 'profile_incomplete', 'items_unavailable'
+
+  const CartApiException(this.message, {this.statusCode, this.code});
+
   @override
   String toString() => message;
-  bool get isProfileIncomplete => statusCode == 403 && message.contains('profile');
-  bool get isSuspended => statusCode == 403 && message.contains('suspend');
+
+  bool get isProfileIncomplete => code == 'profile_incomplete' || (statusCode == 403 && message.contains('profile'));
+  bool get isSuspended         => code == 'suspended'          || (statusCode == 403 && message.contains('suspend'));
+  bool get isCodRestricted     => code == 'cod_restricted';
+  bool get isItemsUnavailable  => code == 'items_unavailable';
 }
+
+// ─── CartService ─────────────────────────────────────────────────────────────
 
 class CartService {
   CartService._();
   static final CartService instance = CartService._();
 
-  final _client = http.Client();
+  final _client  = http.Client();
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const Duration _timeout = Duration(seconds: 15);
 
+  // ── Auth headers ───────────────────────────────────────────────────────────
   Future<Map<String, String>> _authHeaders() async {
     final token = await _storage.read(key: 'access_token');
     return {
@@ -38,18 +63,23 @@ class CartService {
     };
   }
 
+  // ── Response handler ───────────────────────────────────────────────────────
   Map<String, dynamic> _handleResponse(http.Response response) {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 200 && response.statusCode < 300) return body;
-    final message = body['message'] as String? ?? body['error'] as String? ?? 'Something went wrong.';
-    throw CartApiException(message, statusCode: response.statusCode);
+    final message = body['message'] as String?
+        ?? body['error'] as String?
+        ?? 'Something went wrong.';
+    final code = body['code'] as String?;
+    throw CartApiException(message, statusCode: response.statusCode, code: code);
   }
 
-  // ─── GET /api/customer/profile ────────────────────────────────────────────
-  // Used for gate check: profile_completed + restriction_level
+  // ─── GET /api/customer/profile ─────────────────────────────────────────────
+  // Returns profile + restriction_level.
+  // Called by CartProvider.checkProfileGate() before checkout.
   Future<CustomerProfile> fetchProfile() async {
     try {
-      final headers = await _authHeaders();
+      final headers  = await _authHeaders();
       final response = await _client
           .get(Uri.parse('$_baseUrl/api/customer/profile'), headers: headers)
           .timeout(_timeout);
@@ -57,15 +87,53 @@ class CartService {
       return CustomerProfile.fromJson(data);
     } on SocketException {
       throw const CartApiException('No internet connection.');
-    } on TimeoutException {
-      throw const CartApiException('Connection timed out.');
+    } on CartApiException {
+      rethrow;
+    } catch (_) {
+      throw const CartApiException('Connection timed out. Please try again.');
     }
   }
 
-  // ─── POST /api/orders ─────────────────────────────────────────────────────
+  // ─── PUT /api/customer/profile ─────────────────────────────────────────────
+  // Saves first_name, last_name, mobile_number, address.
+  // Used by CompleteProfileScreen (§1.1b) and AccountSettingsScreen (§1.9).
+  Future<CustomerProfile> updateProfile({
+    required String firstName,
+    required String lastName,
+    required String mobileNumber,
+    required String address,
+  }) async {
+    try {
+      final headers  = await _authHeaders();
+      final response = await _client
+          .put(
+        Uri.parse('$_baseUrl/api/customer/profile'),
+        headers: headers,
+        body: jsonEncode({
+          'first_name':    firstName.trim(),
+          'last_name':     lastName.trim(),
+          'mobile_number': mobileNumber.trim(),
+          'address':       address.trim(),
+        }),
+      )
+          .timeout(_timeout);
+      final data = _handleResponse(response);
+      return CustomerProfile.fromJson(data);
+    } on SocketException {
+      throw const CartApiException('No internet connection.');
+    } on CartApiException {
+      rethrow;
+    } catch (_) {
+      throw const CartApiException('Connection timed out. Please try again.');
+    }
+  }
+
+  // ─── POST /api/orders ──────────────────────────────────────────────────────
+  // Places a new online order.
+  // Body is constructed from PlaceOrderRequest.toJson().
   Future<PlaceOrderResponse> placeOrder(PlaceOrderRequest request) async {
     try {
-      final headers = await _authHeaders();
+      final headers  = await _authHeaders();
       final response = await _client
           .post(
         Uri.parse('$_baseUrl/api/orders'),
@@ -77,12 +145,10 @@ class CartService {
       return PlaceOrderResponse.fromJson(data);
     } on SocketException {
       throw const CartApiException('No internet connection.');
-    } on TimeoutException {
+    } on CartApiException {
+      rethrow;
+    } catch (_) {
       throw const CartApiException('Connection timed out. Please try again.');
     }
   }
-}
-
-class TimeoutException implements Exception {
-  const TimeoutException();
 }

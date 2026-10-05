@@ -1,15 +1,20 @@
-import 'package:flutter/material.dart';
+/**
+ * checkout_screen.dart  —  §1.5 Cart & Checkout
+ * ─────────────────────────────────────────────
+ * Steps: Payment → (placing overlay) → Confirmation
+ *
+ * Delivery preference removed — always own_delivery, handled server-side.
+ */
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../models/cart_models.dart';
 import '../../services/cart_provider.dart';
-import '../../services/order_tracking_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
 import '../orders/my_orders_screen.dart';
-import '../tracking/order_tracking_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -21,7 +26,7 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _fadeCtrl;
-  late Animation<double> _fade;
+  late Animation<double>   _fade;
 
   @override
   void initState() {
@@ -31,9 +36,9 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
 
-    // Start at delivery step
+    // Jump straight to payment — no delivery step
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CartProvider>().goToStep(CheckoutStep.delivery);
+      context.read<CartProvider>().goToStep(CheckoutStep.payment);
     });
   }
 
@@ -46,13 +51,13 @@ class _CheckoutScreenState extends State<CheckoutScreen>
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
+      statusBarColor:           Colors.transparent,
+      statusBarIconBrightness:  Brightness.dark,
     ));
 
     return Consumer<CartProvider>(
       builder: (context, cart, _) {
-        // Show full-screen placing overlay
+        // Full-screen placing overlay
         if (cart.step == CheckoutStep.placing) {
           return const _PlacingOrderScreen();
         }
@@ -66,9 +71,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                 children: [
                   _buildHeader(context, cart),
                   _buildStepIndicator(context, cart),
-                  Expanded(
-                    child: _buildStepBody(context, cart),
-                  ),
+                  Expanded(child: _buildStepBody(context, cart)),
                 ],
               ),
             ),
@@ -90,25 +93,19 @@ class _CheckoutScreenState extends State<CheckoutScreen>
         children: [
           if (!isConfirmation)
             IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+              icon:  const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
               color: AppColors.textOnDark,
-              onPressed: () {
-                if (cart.step == CheckoutStep.delivery) {
-                  Navigator.pop(context);
-                } else {
-                  cart.goBack();
-                }
-              },
+              onPressed: () => Navigator.pop(context),
             )
           else
             const SizedBox(width: 48),
           Expanded(
             child: Text(
-              _headerTitle(cart.step),
+              isConfirmation ? 'Order Placed!' : 'Payment',
               style: GoogleFonts.playfairDisplaySc(
-                fontSize: 20,
+                fontSize:   20,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textOnDark,
+                color:      AppColors.textOnDark,
               ),
             ),
           ),
@@ -117,57 +114,39 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     );
   }
 
-  String _headerTitle(CheckoutStep step) {
-    switch (step) {
-      case CheckoutStep.delivery:
-        return 'Delivery';
-      case CheckoutStep.payment:
-        return 'Payment';
-      case CheckoutStep.confirmation:
-        return 'Order Placed!';
-      default:
-        return 'Checkout';
-    }
-  }
-
-  // ─── Step indicator ────────────────────────────────────────────────────────
+  // ─── Step indicator (2 steps: Payment → Done) ──────────────────────────────
   Widget _buildStepIndicator(BuildContext context, CartProvider cart) {
     if (cart.step == CheckoutStep.confirmation) return const SizedBox.shrink();
 
-    const steps = ['Delivery', 'Payment', 'Done'];
-    final currentIdx = cart.step == CheckoutStep.delivery
-        ? 0
-        : cart.step == CheckoutStep.payment
-        ? 1
-        : 2;
+    const steps     = ['Payment', 'Done'];
+    final currentIdx = cart.step == CheckoutStep.payment ? 0 : 1;
 
     return Container(
-      color: AppColors.primaryDark,
-      padding:
-      const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+      color:   AppColors.primaryDark,
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
       child: Row(
         children: List.generate(steps.length * 2 - 1, (i) {
           if (i.isOdd) {
-            // connector
             final leftDone = (i ~/ 2) < currentIdx;
             return Expanded(
               child: Container(
                 height: 2,
-                color: leftDone
+                color:  leftDone
                     ? AppColors.gold
                     : AppColors.textOnDark.withOpacity(0.2),
               ),
             );
           }
-          final stepIdx = i ~/ 2;
-          final isDone = stepIdx < currentIdx;
+          final stepIdx  = i ~/ 2;
+          final isDone   = stepIdx < currentIdx;
           final isActive = stepIdx == currentIdx;
 
           return Column(
             children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                width: 28,
+                duration:  const Duration(milliseconds: 300),
+                width:  28,
                 height: 28,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -190,7 +169,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                       : Text(
                     '${stepIdx + 1}',
                     style: GoogleFonts.karla(
-                      fontSize: 12,
+                      fontSize:   12,
                       fontWeight: FontWeight.w700,
                       color: isActive
                           ? AppColors.primaryDark
@@ -203,7 +182,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
               Text(
                 steps[stepIdx],
                 style: GoogleFonts.karla(
-                  fontSize: 10,
+                  fontSize:   10,
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
                   color: isDone || isActive
                       ? AppColors.gold
@@ -220,8 +199,6 @@ class _CheckoutScreenState extends State<CheckoutScreen>
   // ─── Step body ─────────────────────────────────────────────────────────────
   Widget _buildStepBody(BuildContext context, CartProvider cart) {
     switch (cart.step) {
-      case CheckoutStep.delivery:
-        return _DeliveryStep(cart: cart);
       case CheckoutStep.payment:
         return _PaymentStep(cart: cart);
       case CheckoutStep.confirmation:
@@ -232,222 +209,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
   }
 }
 
-// ─── Step 1: Delivery Preference ──────────────────────────────────────────────
-class _DeliveryStep extends StatelessWidget {
-  final CartProvider cart;
-  const _DeliveryStep({required this.cart});
-
-  @override
-  Widget build(BuildContext context) {
-    final profile = cart.profile;
-
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Deliver to
-                if (profile != null) ...[
-                  Text('Deliver to', style: AppTextStyles.label(context)),
-                  const SizedBox(height: AppSpacing.sm),
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(color: AppColors.border),
-                      boxShadow: AppShadows.card,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppColors.gold.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: CustomPaint(
-                            size: const Size(18, 18),
-                            painter: _PinPainter(),
-                          ),
-                        ),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(profile.displayName,
-                                  style: GoogleFonts.karla(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary)),
-                              if (profile.address != null) ...[
-                                const SizedBox(height: 2),
-                                Text(profile.address!,
-                                    style: AppTextStyles.bodySmall(context),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                ],
-
-                Text('How should we deliver?',
-                    style: AppTextStyles.label(context)),
-                const SizedBox(height: AppSpacing.sm),
-
-                _DeliveryOption(
-                  pref: DeliveryPreference.ownDelivery,
-                  selected: cart.deliveryPreference,
-                  onTap: () =>
-                      cart.setDeliveryPreference(DeliveryPreference.ownDelivery),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                _DeliveryOption(
-                  pref: DeliveryPreference.lalamove,
-                  selected: cart.deliveryPreference,
-                  onTap: () =>
-                      cart.setDeliveryPreference(DeliveryPreference.lalamove),
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // Info note
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceWarm,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CustomPaint(
-                          size: const Size(14, 14),
-                          painter: _InfoDotPainter()),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          'This is a delivery request. Our staff will confirm and assign a rider once your order is prepared.',
-                          style: GoogleFonts.karla(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                              height: 1.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // CTA
-        _CheckoutBottomBar(
-          cart: cart,
-          label: 'CONTINUE TO PAYMENT',
-          onPressed: () => cart.goToStep(CheckoutStep.payment),
-        ),
-      ],
-    );
-  }
-}
-
-class _DeliveryOption extends StatelessWidget {
-  final DeliveryPreference pref;
-  final DeliveryPreference selected;
-  final VoidCallback onTap;
-
-  const _DeliveryOption({
-    required this.pref,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isSelected = pref == selected;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.05) : AppColors.card,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: AppShadows.card,
-        ),
-        child: Row(
-          children: [
-            // Radio dot
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? AppColors.primary : AppColors.border,
-                  width: 2,
-                ),
-                color: isSelected ? AppColors.primary : Colors.transparent,
-              ),
-              child: isSelected
-                  ? const Icon(Icons.check_rounded,
-                  size: 13, color: AppColors.textOnDark)
-                  : null,
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    pref.label,
-                    style: GoogleFonts.karla(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected
-                          ? AppColors.primary
-                          : AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(pref.description,
-                      style: AppTextStyles.bodySmall(context)),
-                ],
-              ),
-            ),
-            // Icon
-            CustomPaint(
-              size: const Size(28, 28),
-              painter: pref == DeliveryPreference.ownDelivery
-                  ? _RiderPainter(isSelected: isSelected)
-                  : _LalamovePainter(isSelected: isSelected),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Step 2: Payment Method ────────────────────────────────────────────────────
+// ─── Payment Step ─────────────────────────────────────────────────────────────
 class _PaymentStep extends StatelessWidget {
   final CartProvider cart;
   const _PaymentStep({required this.cart});
@@ -462,22 +224,30 @@ class _PaymentStep extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Delivery-to card (profile info)
+                if (cart.profile != null) ...[
+                  Text('Deliver to', style: AppTextStyles.label(context)),
+                  const SizedBox(height: AppSpacing.sm),
+                  _DeliverToCard(profile: cart.profile!),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
+
                 // Error banner
                 if (cart.error != CartError.none) ...[
                   StatusBanner(
-                      message: cart.errorMessage ?? 'Something went wrong.',
-                      isError: true),
+                    message: cart.errorMessage ?? 'Something went wrong.',
+                    isError: true,
+                  ),
                   const SizedBox(height: AppSpacing.md),
                 ],
 
-                Text('How will you pay?',
-                    style: AppTextStyles.label(context)),
+                Text('How will you pay?', style: AppTextStyles.label(context)),
                 const SizedBox(height: AppSpacing.sm),
 
                 // GCash
                 _PaymentOption(
-                  method: PaymentMethod.gcash,
-                  selected: cart.paymentMethod,
+                  method:     PaymentMethod.gcash,
+                  selected:   cart.paymentMethod,
                   isDisabled: false,
                   onTap: () => cart.setPaymentMethod(PaymentMethod.gcash),
                 ),
@@ -486,37 +256,13 @@ class _PaymentStep extends StatelessWidget {
                 // COD — hidden if restricted
                 if (cart.canUseCod) ...[
                   _PaymentOption(
-                    method: PaymentMethod.cod,
-                    selected: cart.paymentMethod,
+                    method:     PaymentMethod.cod,
+                    selected:   cart.paymentMethod,
                     isDisabled: false,
                     onTap: () => cart.setPaymentMethod(PaymentMethod.cod),
                   ),
                 ] else ...[
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.error.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(
-                          color: AppColors.error.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.block_rounded,
-                            color: AppColors.error, size: 18),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            'Cash on Delivery is unavailable for your account. Please use GCash.',
-                            style: GoogleFonts.karla(
-                                fontSize: 12,
-                                color: AppColors.error,
-                                height: 1.4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _CodRestrictedBanner(),
                 ],
 
                 const SizedBox(height: AppSpacing.xl),
@@ -529,7 +275,7 @@ class _PaymentStep extends StatelessWidget {
         ),
 
         _CheckoutBottomBar(
-          cart: cart,
+          cart:  cart,
           label: cart.paymentMethod == PaymentMethod.gcash
               ? 'PAY WITH GCASH'
               : 'PLACE ORDER (COD)',
@@ -540,10 +286,98 @@ class _PaymentStep extends StatelessWidget {
   }
 }
 
+// ─── Deliver-to card ──────────────────────────────────────────────────────────
+class _DeliverToCard extends StatelessWidget {
+  final CustomerProfile profile;
+  const _DeliverToCard({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding:    const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color:        AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border:       Border.all(color: AppColors.border),
+        boxShadow:    AppShadows.card,
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.gold.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: CustomPaint(
+              size: const Size(18, 18),
+              painter: _PinPainter(),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  profile.displayName,
+                  style: GoogleFonts.karla(
+                    fontSize:   14,
+                    fontWeight: FontWeight.w700,
+                    color:      AppColors.textPrimary,
+                  ),
+                ),
+                if (profile.address != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.address!,
+                    style:     AppTextStyles.bodySmall(context),
+                    maxLines:  2,
+                    overflow:  TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── COD restricted banner ────────────────────────────────────────────────────
+class _CodRestrictedBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding:    const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color:        AppColors.error.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border:       Border.all(color: AppColors.error.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.block_rounded, color: AppColors.error, size: 18),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'Cash on Delivery is unavailable for your account. Please use GCash.',
+              style: GoogleFonts.karla(
+                  fontSize: 12, color: AppColors.error, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Payment Option tile ──────────────────────────────────────────────────────
 class _PaymentOption extends StatelessWidget {
   final PaymentMethod method;
   final PaymentMethod selected;
-  final bool isDisabled;
+  final bool         isDisabled;
   final VoidCallback onTap;
 
   const _PaymentOption({
@@ -561,13 +395,12 @@ class _PaymentOption extends StatelessWidget {
       onTap: isDisabled ? null : onTap,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 200),
-        opacity: isDisabled ? 0.4 : 1,
+        opacity:  isDisabled ? 0.4 : 1,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.all(AppSpacing.md),
+          duration:   const Duration(milliseconds: 200),
+          padding:    const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color:
-            isSelected ? AppColors.primary.withOpacity(0.05) : AppColors.card,
+            color:        isSelected ? AppColors.primary.withOpacity(0.05) : AppColors.card,
             borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(
               color: isSelected ? AppColors.primary : AppColors.border,
@@ -577,9 +410,10 @@ class _PaymentOption extends StatelessWidget {
           ),
           child: Row(
             children: [
+              // Radio dot
               AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                width: 22,
+                width:  22,
                 height: 22,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -602,7 +436,7 @@ class _PaymentOption extends StatelessWidget {
                     Text(
                       method.label,
                       style: GoogleFonts.karla(
-                        fontSize: 15,
+                        fontSize:   15,
                         fontWeight: FontWeight.w700,
                         color: isSelected
                             ? AppColors.primary
@@ -629,7 +463,7 @@ class _PaymentOption extends StatelessWidget {
   }
 }
 
-// ─── Order Summary Card ────────────────────────────────────────────────────────
+// ─── Order Summary Card ───────────────────────────────────────────────────────
 class _OrderSummaryCard extends StatelessWidget {
   final CartProvider cart;
   const _OrderSummaryCard({required this.cart});
@@ -637,19 +471,18 @@ class _OrderSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding:    const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color:        AppColors.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-        boxShadow: AppShadows.card,
+        border:       Border.all(color: AppColors.border),
+        boxShadow:    AppShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            CustomPaint(
-                size: const Size(14, 14), painter: _LanternDotPainter()),
+            CustomPaint(size: const Size(14, 14), painter: _LanternDotPainter()),
             const SizedBox(width: 6),
             Text('Order Summary', style: AppTextStyles.label(context)),
           ]),
@@ -662,25 +495,24 @@ class _OrderSummaryCard extends StatelessWidget {
                   width: 28,
                   child: Text('${item.quantity}×',
                       style: GoogleFonts.karla(
-                        fontSize: 13,
+                        fontSize:   13,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.gold,
+                        color:      AppColors.gold,
                       )),
                 ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(item.name,
-                      style: AppTextStyles.bodyMedium(context)
-                          .copyWith(fontSize: 13),
+                      style:    AppTextStyles.bodyMedium(context).copyWith(fontSize: 13),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                 ),
                 Text(
                   '₱${item.subtotal.toStringAsFixed(2)}',
                   style: GoogleFonts.karla(
-                      fontSize: 13,
+                      fontSize:   13,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary),
+                      color:      AppColors.textPrimary),
                 ),
               ],
             ),
@@ -695,9 +527,9 @@ class _OrderSummaryCard extends StatelessWidget {
               Text(
                 '₱${cart.totalAmount.toStringAsFixed(2)}',
                 style: GoogleFonts.playfairDisplaySc(
-                    fontSize: 16,
+                    fontSize:   16,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primary),
+                    color:      AppColors.primary),
               ),
             ],
           ),
@@ -707,7 +539,7 @@ class _OrderSummaryCard extends StatelessWidget {
   }
 }
 
-// ─── Step 3: Confirmation ─────────────────────────────────────────────────────
+// ─── Confirmation Step ────────────────────────────────────────────────────────
 class _ConfirmationStep extends StatelessWidget {
   final CartProvider cart;
   const _ConfirmationStep({required this.cart});
@@ -722,7 +554,7 @@ class _ConfirmationStep extends StatelessWidget {
         children: [
           const SizedBox(height: AppSpacing.xl),
 
-          // Success lanterns
+          // Lanterns
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -740,26 +572,26 @@ class _ConfirmationStep extends StatelessWidget {
           const SizedBox(height: AppSpacing.xl),
 
           Text('Order placed!',
-              style: AppTextStyles.display2(context),
-              textAlign: TextAlign.center),
+              style: AppTextStyles.display2(context), textAlign: TextAlign.center),
           const SizedBox(height: AppSpacing.sm),
           Text(
             'Your order is being prepared.\nWe\'ll notify you every step of the way.',
-            style: AppTextStyles.bodyMedium(context),
+            style:     AppTextStyles.bodyMedium(context),
             textAlign: TextAlign.center,
           ),
 
           const SizedBox(height: AppSpacing.xl),
 
-          // Order number card
           if (order != null) ...[
+            // Order number card
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(AppSpacing.lg),
+              width:      double.infinity,
+              padding:    const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
-                color: AppColors.card,
+                color:        AppColors.card,
                 borderRadius: BorderRadius.circular(AppRadius.lg),
-                border: Border.all(color: AppColors.gold.withOpacity(0.4), width: 1.5),
+                border: Border.all(
+                    color: AppColors.gold.withOpacity(0.4), width: 1.5),
                 boxShadow: AppShadows.goldGlow,
               ),
               child: Column(
@@ -773,9 +605,9 @@ class _ConfirmationStep extends StatelessWidget {
                   Text(
                     order.orderNumber,
                     style: GoogleFonts.playfairDisplaySc(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
+                      fontSize:      24,
+                      fontWeight:    FontWeight.w700,
+                      color:         AppColors.primary,
                       letterSpacing: 1,
                     ),
                   ),
@@ -786,55 +618,44 @@ class _ConfirmationStep extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.md),
 
-            // Payment note for GCash
-            if (cart.paymentMethod == PaymentMethod.gcash && order.paymentUrl != null) ...[
+            // GCash note (manual receipt upload flow)
+            if (cart.paymentMethod == PaymentMethod.gcash) ...[
               Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
+                padding:    const EdgeInsets.all(AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceWarm,
+                  color:        AppColors.surfaceWarm,
                   borderRadius: BorderRadius.circular(AppRadius.md),
-                  border: Border.all(color: AppColors.border),
+                  border:       Border.all(color: AppColors.border),
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     CustomPaint(
-                        size: const Size(14, 14),
-                        painter: _InfoDotPainter()),
+                        size: const Size(14, 14), painter: _InfoDotPainter()),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        'You will be redirected to GCash to complete payment.',
+                        'Please send your GCash payment to our number and upload the receipt in My Orders so we can confirm your order.',
                         style: GoogleFonts.karla(
                             fontSize: 12,
-                            color: AppColors.textSecondary,
-                            height: 1.4),
+                            color:    AppColors.textSecondary,
+                            height:   1.5),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              PrimaryButton(
-                label: 'PAY NOW (GCASH)',
-                onPressed: () {
-                  // TODO: Launch PayMongo URL in webview/browser
-                  // launch(order.paymentUrl!)
-                },
-              ),
-              const SizedBox(height: AppSpacing.sm),
             ],
           ],
 
           const SizedBox(height: AppSpacing.lg),
 
           PrimaryButton(
-            label: 'VIEW MY ORDERS',
+            label:     'VIEW MY ORDERS',
             onPressed: () {
-              // Clear cart and go to the orders list page
               cart.clearCart();
               Navigator.popUntil(context, (route) => route.isFirst);
-              
-              // Navigate directly to the "My Orders" list screen
               Navigator.push(
                 context,
                 PageRouteBuilder(
@@ -842,7 +663,7 @@ class _ConfirmationStep extends StatelessWidget {
                   transitionsBuilder: (_, anim, __, child) => SlideTransition(
                     position: Tween<Offset>(
                       begin: const Offset(0, 1),
-                      end: Offset.zero,
+                      end:   Offset.zero,
                     ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
                     child: child,
                   ),
@@ -853,19 +674,20 @@ class _ConfirmationStep extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           GoldOutlineButton(
-            label: 'BACK TO MENU',
+            label:     'BACK TO MENU',
             onPressed: () {
               cart.clearCart();
               Navigator.popUntil(context, (route) => route.isFirst);
             },
           ),
+          const SizedBox(height: AppSpacing.xl),
         ],
       ),
     );
   }
 }
 
-// ─── Placing Order overlay ─────────────────────────────────────────────────────
+// ─── Placing Order overlay ────────────────────────────────────────────────────
 class _PlacingOrderScreen extends StatelessWidget {
   const _PlacingOrderScreen();
 
@@ -882,9 +704,9 @@ class _PlacingOrderScreen extends StatelessWidget {
             Text(
               'Placing your order…',
               style: GoogleFonts.playfairDisplaySc(
-                fontSize: 20,
+                fontSize:   20,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textOnDark,
+                color:      AppColors.textOnDark,
               ),
             ),
             const SizedBox(height: AppSpacing.sm),
@@ -892,7 +714,7 @@ class _PlacingOrderScreen extends StatelessWidget {
               'Hold on a moment',
               style: GoogleFonts.karla(
                 fontSize: 13,
-                color: AppColors.textOnDark.withOpacity(0.6),
+                color:    AppColors.textOnDark.withOpacity(0.6),
               ),
             ),
             const SizedBox(height: AppSpacing.xl),
@@ -905,10 +727,10 @@ class _PlacingOrderScreen extends StatelessWidget {
   }
 }
 
-// ─── Checkout Bottom Bar ───────────────────────────────────────────────────────
+// ─── Checkout Bottom Bar ──────────────────────────────────────────────────────
 class _CheckoutBottomBar extends StatelessWidget {
   final CartProvider cart;
-  final String label;
+  final String       label;
   final VoidCallback onPressed;
 
   const _CheckoutBottomBar({
@@ -927,44 +749,42 @@ class _CheckoutBottomBar extends StatelessWidget {
         AppSpacing.md + MediaQuery.of(context).viewPadding.bottom,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color:  AppColors.surface,
         border: const Border(top: BorderSide(color: AppColors.border)),
         boxShadow: [
           BoxShadow(
-              color: AppColors.shadow, blurRadius: 12, offset: const Offset(0, -4))
+              color:      AppColors.shadow,
+              blurRadius: 12,
+              offset:     const Offset(0, -4)),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize:       MainAxisSize.min,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Order Total',
-                      style: AppTextStyles.label(context)
-                          .copyWith(color: AppColors.textMuted, fontSize: 11)),
-                  Text(
-                    '₱${cart.totalAmount.toStringAsFixed(2)}',
-                    style: GoogleFonts.playfairDisplaySc(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(
-                width: 196,
-                child: PrimaryButton(
-                  label: label,
-                  onPressed: cart.isLoading ? null : onPressed,
-                  isLoading: cart.isLoading,
+              Text('Order Total',
+                  style: AppTextStyles.label(context)
+                      .copyWith(color: AppColors.textMuted, fontSize: 11)),
+              Text(
+                '₱${cart.totalAmount.toStringAsFixed(2)}',
+                style: GoogleFonts.playfairDisplaySc(
+                  fontSize:   20,
+                  fontWeight: FontWeight.w700,
+                  color:      AppColors.primary,
                 ),
               ),
             ],
+          ),
+          SizedBox(
+            width: 196,
+            child: PrimaryButton(
+              label:     label,
+              onPressed: cart.isLoading ? null : onPressed,
+              isLoading: cart.isLoading,
+            ),
           ),
         ],
       ),
@@ -972,7 +792,7 @@ class _CheckoutBottomBar extends StatelessWidget {
   }
 }
 
-// ─── Custom Painters ───────────────────────────────────────────────────────────
+// ─── Custom Painters ──────────────────────────────────────────────────────────
 
 class _PinPainter extends CustomPainter {
   @override
@@ -1013,9 +833,9 @@ class _InfoDotPainter extends CustomPainter {
         Offset(size.width / 2, size.height * 0.3),
         Offset(size.width / 2, size.height * 0.75),
         Paint()
-          ..color = AppColors.primaryDark
+          ..color       = AppColors.primaryDark
           ..strokeWidth = 1.5
-          ..strokeCap = StrokeCap.round);
+          ..strokeCap   = StrokeCap.round);
   }
 
   @override
@@ -1036,100 +856,34 @@ class _LanternDotPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _RiderPainter extends CustomPainter {
-  final bool isSelected;
-  const _RiderPainter({required this.isSelected});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color =
-      isSelected ? AppColors.primary : AppColors.textMuted.withOpacity(0.5)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    // Simple bike icon
-    canvas.drawCircle(Offset(size.width * 0.22, size.height * 0.65),
-        size.width * 0.2, p);
-    canvas.drawCircle(Offset(size.width * 0.78, size.height * 0.65),
-        size.width * 0.2, p);
-    final body = Path()
-      ..moveTo(size.width * 0.22, size.height * 0.65)
-      ..lineTo(size.width * 0.42, size.height * 0.28)
-      ..lineTo(size.width * 0.65, size.height * 0.28)
-      ..lineTo(size.width * 0.78, size.height * 0.65)
-      ..moveTo(size.width * 0.5, size.height * 0.28)
-      ..lineTo(size.width * 0.5, size.height * 0.12)
-      ..lineTo(size.width * 0.62, size.height * 0.12);
-    canvas.drawPath(body, p);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _LalamovePainter extends CustomPainter {
-  final bool isSelected;
-  const _LalamovePainter({required this.isSelected});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color =
-      isSelected ? AppColors.primary : AppColors.textMuted.withOpacity(0.5)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    // Simple van icon
-    final van = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-              0, size.height * 0.2, size.width * 0.75, size.height * 0.55),
-          const Radius.circular(3)))
-      ..moveTo(size.width * 0.75, size.height * 0.35)
-      ..lineTo(size.width * 0.98, size.height * 0.45)
-      ..lineTo(size.width * 0.98, size.height * 0.75)
-      ..lineTo(size.width * 0.75, size.height * 0.75);
-    canvas.drawPath(van, p);
-    canvas.drawCircle(Offset(size.width * 0.2, size.height * 0.8),
-        size.width * 0.09, p);
-    canvas.drawCircle(Offset(size.width * 0.6, size.height * 0.8),
-        size.width * 0.09, p);
-    canvas.drawCircle(Offset(size.width * 0.88, size.height * 0.8),
-        size.width * 0.09, p);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class _GCashBadgePainter extends CustomPainter {
   final bool isSelected;
   const _GCashBadgePainter({required this.isSelected});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final fill = Paint()
-      ..color =
-      isSelected ? AppColors.primary.withOpacity(0.15) : AppColors.border
-      ..style = PaintingStyle.fill;
     canvas.drawRRect(
         RRect.fromRectAndRadius(
             Rect.fromLTWH(0, 0, size.width, size.height),
             const Radius.circular(4)),
-        fill);
+        Paint()
+          ..color = isSelected
+              ? AppColors.primary.withOpacity(0.15)
+              : AppColors.border
+          ..style = PaintingStyle.fill);
     final text = TextPainter(
       text: TextSpan(
         text: 'G',
         style: GoogleFonts.karla(
-          fontSize: size.height * 0.7,
+          fontSize:   size.height * 0.7,
           fontWeight: FontWeight.w900,
           color: isSelected ? AppColors.primary : AppColors.textMuted,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    text.paint(canvas,
-        Offset((size.width - text.width) / 2, (size.height - text.height) / 2));
+    text.paint(
+        canvas, Offset((size.width - text.width) / 2, (size.height - text.height) / 2));
   }
 
   @override
@@ -1139,22 +893,23 @@ class _GCashBadgePainter extends CustomPainter {
 class _CashBadgePainter extends CustomPainter {
   final bool isSelected;
   const _CashBadgePainter({required this.isSelected});
+
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()
-      ..color =
-      isSelected ? AppColors.primary : AppColors.textMuted.withOpacity(0.5)
-      ..style = PaintingStyle.stroke
+      ..color       = isSelected ? AppColors.primary : AppColors.textMuted.withOpacity(0.5)
+      ..style       = PaintingStyle.stroke
       ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap   = StrokeCap.round;
     canvas.drawRRect(
         RRect.fromRectAndRadius(
             Rect.fromLTWH(
-                size.width * 0.05, size.height * 0.15, size.width * 0.9, size.height * 0.7),
+                size.width * 0.05, size.height * 0.15,
+                size.width * 0.9,  size.height * 0.7),
             const Radius.circular(3)),
         p);
-    canvas.drawCircle(Offset(size.width / 2, size.height / 2),
-        size.width * 0.18, p);
+    canvas.drawCircle(
+        Offset(size.width / 2, size.height / 2), size.width * 0.18, p);
   }
 
   @override
@@ -1164,6 +919,7 @@ class _CashBadgePainter extends CustomPainter {
 class _ConfirmLantern extends CustomPainter {
   final double tilt;
   const _ConfirmLantern({required this.tilt});
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
@@ -1171,16 +927,9 @@ class _ConfirmLantern extends CustomPainter {
     canvas.rotate(tilt);
     canvas.translate(-size.width / 2, -size.height / 2);
 
-    final gFill = Paint()
-      ..color = AppColors.gold
-      ..style = PaintingStyle.fill;
-    final mFill = Paint()
-      ..color = AppColors.primaryDark
-      ..style = PaintingStyle.fill;
-    final stroke = Paint()
-      ..color = AppColors.gold
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+    final gFill  = Paint()..color = AppColors.gold..style = PaintingStyle.fill;
+    final mFill  = Paint()..color = AppColors.primaryDark..style = PaintingStyle.fill;
+    final stroke = Paint()..color = AppColors.gold..style = PaintingStyle.stroke..strokeWidth = 1.5;
 
     final w = size.width;
     final h = size.height;
@@ -1201,7 +950,6 @@ class _ConfirmLantern extends CustomPainter {
     canvas.drawPath(body, mFill);
     canvas.drawPath(body, stroke);
 
-    // Glow dot
     canvas.drawCircle(Offset(w / 2, h * 0.46), w * 0.08,
         Paint()..color = AppColors.goldLight.withOpacity(0.4));
 
@@ -1211,7 +959,6 @@ class _ConfirmLantern extends CustomPainter {
             const Radius.circular(2)),
         gFill);
 
-    // Tassel
     for (int i = 0; i < 4; i++) {
       final x = w * 0.22 + i * w * 0.19;
       canvas.drawLine(Offset(x, h * 0.82),
