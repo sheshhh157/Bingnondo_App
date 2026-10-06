@@ -1,3 +1,7 @@
+// lib/services/support_chat_provider.dart
+// §1.7 UPDATE — added onSupportChatStatus handler for real-time lock/unlock
+// Everything else (loadChat, sendMessage, mock) is unchanged from original.
+
 import 'package:flutter/foundation.dart';
 import '../models/tracking_models.dart';
 import '../mock/mock_data.dart';
@@ -22,7 +26,11 @@ class SupportChatProvider extends ChangeNotifier {
   bool get isLocked => _chat?.isLocked ?? false;
 
   SupportChatProvider() {
+    // Real-time incoming message from staff
     SocketService.instance.onSupportMessage = _handleIncomingMessage;
+
+    // §1.7 — real-time lock/unlock triggered by order status changes
+    SocketService.instance.onSupportChatStatus = _handleChatStatusChange;
   }
 
   void setActiveOrderId(int? orderId) {
@@ -38,9 +46,7 @@ class SupportChatProvider extends ChangeNotifier {
       if (kUseMock) {
         await Future.delayed(const Duration(milliseconds: 600));
         _chat = SupportChat.fromJson(kMockSupportChat);
-        _state = _chat!.isLocked
-            ? ChatLoadState.loaded
-            : ChatLoadState.loaded;
+        _state = ChatLoadState.loaded;
       } else {
         final result = await TrackingService.instance.fetchSupportChat();
         if (result == null) {
@@ -48,7 +54,7 @@ class SupportChatProvider extends ChangeNotifier {
         } else {
           _chat = result;
           _state = ChatLoadState.loaded;
-          // Mark messages read
+          // Mark staff messages read
           TrackingService.instance.markMessagesRead();
         }
       }
@@ -105,7 +111,9 @@ class SupportChatProvider extends ChangeNotifier {
     }
   }
 
-  // Called by Socket.io `support_message` event
+  // ── Socket handlers ─────────────────────────────────────────────────────────
+
+  // Called by Socket.io `support_message` event — incoming staff reply
   void _handleIncomingMessage(Map<String, dynamic> data) {
     try {
       final msg = SupportMessage.fromJson(data);
@@ -114,6 +122,31 @@ class SupportChatProvider extends ChangeNotifier {
       }
     } catch (_) {}
   }
+
+  // §1.7 — Called by Socket.io `support_chat_status` event
+  // Payload: { status: 'locked' | 'unlocked', chat_id: int }
+  void _handleChatStatusChange(Map<String, dynamic> data) {
+    if (_chat == null) return;
+    try {
+      final newStatusStr = data['status'] as String?;
+      if (newStatusStr == null) return;
+      final newStatus = newStatusStr == 'locked'
+          ? ChatStatus.locked
+          : ChatStatus.unlocked;
+
+      if (newStatus == _chat!.status) return; // no change
+
+      _chat = SupportChat(
+        id: _chat!.id,
+        status: newStatus,
+        messages: _chat!.messages,
+        activeOrderId: _chat!.activeOrderId,
+      );
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────────
 
   void _appendMessage(SupportMessage msg) {
     if (_chat == null) return;
@@ -130,6 +163,7 @@ class SupportChatProvider extends ChangeNotifier {
   @override
   void dispose() {
     SocketService.instance.onSupportMessage = null;
+    SocketService.instance.onSupportChatStatus = null; // §1.7
     super.dispose();
   }
 }

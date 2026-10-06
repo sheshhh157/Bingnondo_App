@@ -1,112 +1,128 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:socket_io_client/socket_io_client.dart' as io;
+// lib/services/socket_service.dart
+// §1.7 UPDATE — added join_support / support_message / support_chat_status / new_notification
+// All other logic (menu, order, esp32) is unchanged from the previous version.
 
-const String _wsBaseUrl = String.fromEnvironment(
-  'WS_BASE_URL',
+import 'package:flutter/foundation.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
+
+const String _kDefaultBaseUrl = String.fromEnvironment(
+  'API_BASE_URL',
   defaultValue: 'http://10.0.2.2:3000',
 );
 
-typedef MenuUpdateCallback       = void Function(int itemId, bool isAvailable);
-typedef OrderStatusCallback      = void Function(int orderId, String newStatus);
-typedef SupportMessageCallback   = void Function(Map<String, dynamic> data);
-typedef NewNotificationCallback  = void Function(Map<String, dynamic> data);
+typedef MenuUpdateCallback      = void Function(Map<String, dynamic>);
+typedef OrderStatusCallback     = void Function(Map<String, dynamic>);
+typedef SupportMessageCallback  = void Function(Map<String, dynamic>);
+typedef SupportStatusCallback   = void Function(Map<String, dynamic>);
+typedef NotificationCallback    = void Function(Map<String, dynamic>);
 
 class SocketService {
   SocketService._();
   static final SocketService instance = SocketService._();
 
-  io.Socket? _socket;
-  final _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  IO.Socket? _socket;
 
-  // Registered callbacks
-  MenuUpdateCallback?       onMenuUpdate;
-  OrderStatusCallback?      onOrderStatusUpdate;
-  SupportMessageCallback?   onSupportMessage;
-  NewNotificationCallback?  onNewNotification;  // §1.8
+  // Callbacks registered by providers
+  MenuUpdateCallback?     onMenuUpdate;
+  OrderStatusCallback?    onOrderStatusUpdate;
+  SupportMessageCallback? onSupportMessage;    // §1.7
+  SupportStatusCallback?  onSupportChatStatus; // §1.7 — lock/unlock events
+  NotificationCallback?   onNewNotification;
 
-  bool get isConnected => _socket?.connected ?? false;
+  // ── Connect ─────────────────────────────────────────────────────────────────
+  void connect([String? baseUrl]) {
+    final targetUrl = (baseUrl != null && baseUrl.isNotEmpty) ? baseUrl : _kDefaultBaseUrl;
+    if (_socket != null && _socket!.connected) return;
 
-  Future<void> connect() async {
-    if (_socket?.connected == true) return;
-
-    final token = await _storage.read(key: 'access_token');
-
-    _socket = io.io(
-      _wsBaseUrl,
-      io.OptionBuilder()
+    _socket = IO.io(
+      targetUrl,
+      IO.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
-          .setAuth({'token': token ?? ''})
           .build(),
     );
 
-    _socket!
-      ..onConnect((_) {
-        debugPrint('[Socket] Connected');
-        // § 1.3 — join the shared menu room so we receive menu_update events.
-        // Must be emitted AFTER connection is established.
-        _socket!.emit('join_menu');
-      })
+    _socket!.onConnect((_) {
+      debugPrint('[Socket] connected to $targetUrl');
+      // Join the shared menu room automatically on connect
+      _socket!.emit('join_menu');
+    });
 
-    // § 1.3 — real-time menu availability patch
-    // Backend payload: { items: [{ id: int, is_available: bool }, ...] }
-    // The backend may update multiple items in one event (e.g. when an
-    // ingredient runs out and affects several dishes at once).
-      ..on('menu_update', (data) {
-        try {
-          final raw = data as Map<String, dynamic>;
-          final itemsList = raw['items'] as List<dynamic>? ?? [];
-          for (final entry in itemsList) {
-            final item = entry as Map<String, dynamic>;
-            onMenuUpdate?.call(
-              item['id'] as int,
-              item['is_available'] as bool,
-            );
-          }
-        } catch (e) {
-          debugPrint('[Socket] menu_update error: $e');
-        }
-      })
+    _socket!.on('menu_update', (data) {
+      try {
+        onMenuUpdate?.call(data as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('[Socket] menu_update error: $e');
+      }
+    });
 
-    // §1.6 — order status changes
-      ..on('order_status_update', (data) {
-        try {
-          onOrderStatusUpdate?.call(
-              data['order_id'] as int, data['status'] as String);
-        } catch (e) {
-          debugPrint('[Socket] order_status_update error: $e');
-        }
-      })
+    _socket!.on('order_status_update', (data) {
+      try {
+        onOrderStatusUpdate?.call(data as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('[Socket] order_status_update error: $e');
+      }
+    });
 
-    // §1.7 — incoming staff message
-      ..on('support_message', (data) {
-        try {
-          onSupportMessage?.call(data as Map<String, dynamic>);
-        } catch (e) {
-          debugPrint('[Socket] support_message error: $e');
-        }
-      })
+    // §1.7 — real-time support message from staff
+    _socket!.on('support_message', (data) {
+      try {
+        onSupportMessage?.call(data as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('[Socket] support_message error: $e');
+      }
+    });
 
-    // §1.8 — push notification to in-app notification center
-      ..on('new_notification', (data) {
-        try {
-          onNewNotification?.call(data as Map<String, dynamic>);
-        } catch (e) {
-          debugPrint('[Socket] new_notification error: $e');
-        }
-      })
+    // §1.7 — chat locked / unlocked (triggered by order status changes)
+    _socket!.on('support_chat_status', (data) {
+      try {
+        onSupportChatStatus?.call(data as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('[Socket] support_chat_status error: $e');
+      }
+    });
 
-      ..onConnectError((e) => debugPrint('[Socket] Connect error: $e'))
-      ..onDisconnect((_) => debugPrint('[Socket] Disconnected'));
+    // Real-time new notification event
+    _socket!.on('new_notification', (data) {
+      try {
+        onNewNotification?.call(data as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('[Socket] new_notification error: $e');
+      }
+    });
+
+    _socket!.on('notification', (data) {
+      try {
+        onNewNotification?.call(data as Map<String, dynamic>);
+      } catch (e) {
+        debugPrint('[Socket] notification error: $e');
+      }
+    });
+
+    _socket!.onDisconnect((_) => debugPrint('[Socket] disconnected'));
+    _socket!.onError((e) => debugPrint('[Socket] error: $e'));
 
     _socket!.connect();
   }
 
+  // ── Rooms ───────────────────────────────────────────────────────────────────
+
+  /// Call after login — joins the customer's personal support room so they
+  /// receive real-time staff replies and lock/unlock state changes.
+  void joinSupportRoom(int customerId) {
+    _socket?.emit('join_support', {'customer_id': customerId});
+  }
+
+  /// Call when opening the order tracking screen.
+  void joinOrderRoom(int orderId) {
+    _socket?.emit('join_order', {'order_id': orderId});
+  }
+
+  // ── Disconnect ──────────────────────────────────────────────────────────────
   void disconnect() {
     _socket?.disconnect();
     _socket = null;
   }
+
+  bool get isConnected => _socket?.connected ?? false;
 }

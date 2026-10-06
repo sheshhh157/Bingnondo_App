@@ -23,7 +23,17 @@ class MenuProvider extends ChangeNotifier {
       _data?.itemsForCategory(categoryId) ?? [];
 
   MenuProvider() {
-    SocketService.instance.onMenuUpdate = updateItemAvailability;
+    SocketService.instance.onMenuUpdate = _handleMenuUpdate;
+  }
+
+  void _handleMenuUpdate(Map<String, dynamic> data) {
+    try {
+      final itemId = (data['item_id'] ?? data['id']) as int?;
+      final isAvailable = (data['is_available'] ?? data['available']) as bool?;
+      if (itemId != null && isAvailable != null) {
+        updateItemAvailability(itemId, isAvailable);
+      }
+    } catch (_) {}
   }
 
   Future<void> loadMenu() async {
@@ -38,7 +48,7 @@ class MenuProvider extends ChangeNotifier {
         await _loadMockMenu();
       } else {
         _data = await MenuService.instance.fetchMenu();
-        await SocketService.instance.connect();
+        SocketService.instance.connect();
       }
       _state = MenuLoadState.loaded;
     } on MenuApiException catch (e) {

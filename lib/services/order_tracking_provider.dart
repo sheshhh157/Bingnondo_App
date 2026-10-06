@@ -20,7 +20,17 @@ class OrderTrackingProvider extends ChangeNotifier {
 
   OrderTrackingProvider() {
     // Hook into Socket.io `order_status_update` events
-    SocketService.instance.onOrderStatusUpdate = _handleSocketUpdate;
+    SocketService.instance.onOrderStatusUpdate = _handleSocketData;
+  }
+
+  void _handleSocketData(Map<String, dynamic> data) {
+    try {
+      final orderId = (data['order_id'] ?? data['id']) as int?;
+      final statusStr = (data['status'] ?? data['order_status']) as String?;
+      if (orderId != null && statusStr != null) {
+        _handleSocketUpdate(orderId, statusStr);
+      }
+    } catch (_) {}
   }
 
   Future<void> loadOrder(int orderId) async {
