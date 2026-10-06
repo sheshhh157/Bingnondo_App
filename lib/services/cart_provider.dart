@@ -3,6 +3,7 @@ import '../models/cart_models.dart';
 import '../models/menu_models.dart';
 import '../mock/mock_data.dart';
 import 'cart_service.dart';
+import 'gcash_receipt_service.dart';
 
 // delivery step removed — checkout is now: cart → payment → placing → confirmation
 enum CheckoutStep { cart, payment, placing, confirmation }
@@ -22,21 +23,30 @@ class CartProvider extends ChangeNotifier {
   double get totalAmount        => subtotal;
 
   // ─── Checkout state ────────────────────────────────────────────────────────
-  CheckoutStep      _step          = CheckoutStep.cart;
-  PaymentMethod     _paymentMethod = PaymentMethod.gcash;
-  CustomerProfile?  _profile;
+  CheckoutStep        _step          = CheckoutStep.cart;
+  PaymentMethod       _paymentMethod = PaymentMethod.gcash;
+  CustomerProfile?    _profile;
   PlaceOrderResponse? _lastOrder;
-  CartError         _error         = CartError.none;
-  String?           _errorMessage;
-  bool              _isLoading     = false;
+  CartError           _error         = CartError.none;
+  String?             _errorMessage;
+  bool                _isLoading     = false;
 
-  CheckoutStep      get step          => _step;
-  PaymentMethod     get paymentMethod => _paymentMethod;
-  CustomerProfile?  get profile       => _profile;
-  PlaceOrderResponse? get lastOrder   => _lastOrder;
-  CartError         get error         => _error;
-  String?           get errorMessage  => _errorMessage;
-  bool              get isLoading     => _isLoading;
+  // GCash receipt extract result — set after extract-receipt, cleared on place/reset
+  GcashExtractResult? _gcashExtractResult;
+
+  CheckoutStep        get step               => _step;
+  PaymentMethod       get paymentMethod      => _paymentMethod;
+  CustomerProfile?    get profile            => _profile;
+  PlaceOrderResponse? get lastOrder          => _lastOrder;
+  CartError           get error              => _error;
+  String?             get errorMessage       => _errorMessage;
+  bool                get isLoading          => _isLoading;
+  GcashExtractResult? get gcashExtractResult => _gcashExtractResult;
+
+  /// True when GCash payment is ready to place:
+  /// receipt uploaded and ref extracted (or ref is null but user chose to proceed anyway)
+  bool get gcashReceiptReady =>
+      _paymentMethod != PaymentMethod.gcash || _gcashExtractResult != null;
 
   bool get canUseCod    => _profile?.restrictionLevel.canUseCod ?? true;
   bool get isSuspended  => _profile?.restrictionLevel == RestrictionLevel.suspended;
@@ -120,9 +130,10 @@ class CartProvider extends ChangeNotifier {
 
   void clearCart() {
     _items.clear();
-    _orderNotes = null;
-    _step       = CheckoutStep.cart;
-    _lastOrder  = null;
+    _orderNotes         = null;
+    _step               = CheckoutStep.cart;
+    _lastOrder          = null;
+    _gcashExtractResult = null;
     _clearError();
     notifyListeners();
   }
@@ -131,6 +142,20 @@ class CartProvider extends ChangeNotifier {
 
   void setPaymentMethod(PaymentMethod method) {
     _paymentMethod = method;
+    // Clear receipt state when switching payment method
+    _gcashExtractResult = null;
+    _clearError();
+    notifyListeners();
+  }
+
+  void setGcashExtractResult(GcashExtractResult? result) {
+    _gcashExtractResult = result;
+    _clearError();
+    notifyListeners();
+  }
+
+  void clearGcashReceipt() {
+    _gcashExtractResult = null;
     notifyListeners();
   }
 
@@ -204,9 +229,11 @@ class CartProvider extends ChangeNotifier {
 
     try {
       final request = PlaceOrderRequest(
-        items:        List.from(_items),
-        paymentMethod: _paymentMethod,
-        orderNotes:   _orderNotes,
+        items:               List.from(_items),
+        paymentMethod:       _paymentMethod,
+        orderNotes:          _orderNotes,
+        gcashReceiptTempUrl: _gcashExtractResult?.tempUrl,
+        gcashRefNumber:      _gcashExtractResult?.gcashRefNumber,
       );
 
       PlaceOrderResponse response;

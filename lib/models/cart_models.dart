@@ -142,22 +142,32 @@ class CustomerProfile {
 
 class PlaceOrderRequest {
   final List<CartItem> items;
-  final PaymentMethod paymentMethod;
-  final String? orderNotes;
+  final PaymentMethod  paymentMethod;
+  final String?        orderNotes;
+  // GCash only — from extract-receipt step
+  final String?        gcashReceiptTempUrl;
+  final String?        gcashRefNumber;
 
   const PlaceOrderRequest({
     required this.items,
     required this.paymentMethod,
     this.orderNotes,
+    this.gcashReceiptTempUrl,
+    this.gcashRefNumber,
   });
 
   Map<String, dynamic> toJson() => {
     'order_type':          'online',
     'order_channel':       'mobile_app',
-    'delivery_preference': 'own_delivery', // hardcoded — only one mode supported
+    'delivery_preference': 'own_delivery',
     'payment_method':      paymentMethod.apiValue,
     'items':               items.map((i) => i.toOrderJson()).toList(),
-    if (orderNotes != null && orderNotes!.isNotEmpty) 'notes': orderNotes,
+    if (orderNotes != null && orderNotes!.isNotEmpty)
+      'notes': orderNotes,
+    if (gcashReceiptTempUrl != null)
+      'gcash_receipt_temp_url': gcashReceiptTempUrl,
+    if (gcashRefNumber != null)
+      'gcash_ref_number': gcashRefNumber,
   };
 }
 
