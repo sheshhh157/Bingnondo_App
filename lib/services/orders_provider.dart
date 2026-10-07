@@ -40,7 +40,8 @@ class OrdersProvider extends ChangeNotifier {
     } on OrdersApiException catch (e) {
       _errorMessage = e.message;
       _state = OrdersLoadState.error;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[OrdersProvider] loadOrders failed: $e\n$st');
       _errorMessage = 'Could not load orders. Please try again.';
       _state = OrdersLoadState.error;
     }
@@ -48,6 +49,14 @@ class OrdersProvider extends ChangeNotifier {
   }
 
   Future<void> refresh() => loadOrders();
+
+  /// Call on logout so the next account doesn't inherit stale orders.
+  void clear() {
+    _orders = [];
+    _state = OrdersLoadState.initial;
+    _errorMessage = null;
+    notifyListeners();
+  }
 
   void patchOrderStatus(int orderId, String newStatus) {
     final idx = _orders.indexWhere((o) => o.id == orderId);

@@ -158,7 +158,7 @@ class OrderDetail {
 
   factory OrderDetail.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'] as List<dynamic>? ?? [];
-    
+
     final statusStr = json['status'] as String? ?? 'pending';
     OrderStatus mappedStatus;
     switch (statusStr) {
@@ -176,7 +176,7 @@ class OrderDetail {
       orderNumber: json['order_number'] as String,
       status: mappedStatus,
       paymentMethod: json['payment_method'] as String? ?? 'cod',
-      totalAmount: (json['total_amount'] as num).toDouble(),
+      totalAmount: double.tryParse(json['total_amount'].toString()) ?? 0.0,
       items: rawItems
           .map((i) => OrderedItem.fromJson(i as Map<String, dynamic>))
           .toList(),

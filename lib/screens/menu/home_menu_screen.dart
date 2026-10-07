@@ -18,6 +18,7 @@ import '../settings/account_settings_screen.dart';
 import '../chat/support_chat_screen.dart';
 import '../../services/order_tracking_provider.dart';
 import '../../services/orders_provider.dart';
+import '../../services/socket_service.dart';
 import '../../services/announcement_provider.dart';
 import '../../widgets/lantern_announcement_panel.dart';
 
@@ -71,6 +72,11 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
       context.read<MenuProvider>().loadMenu().then((_) => _rebuildTabs());
       // Pre-load notifications for badge count
       context.read<NotificationsProvider>().load();
+      // Load orders up-front so "Message Staff" knows if there's an active order
+      context.read<OrdersProvider>().loadOrders();
+      // Join personal support room for real-time staff replies / lock-unlock
+      final uid = context.read<AuthProvider>().user?.id;
+      if (uid != null) SocketService.instance.joinSupportRoom(uid);
     });
   }
 
@@ -434,12 +440,15 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   }
 
   void _showProfileMenu(BuildContext context) {
+    // Refresh so the Message Staff tile reflects the latest order status
+    context.read<OrdersProvider>().loadOrders();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => _ProfileSheet(
         onLogout: () async {
           Navigator.pop(context);
+          context.read<OrdersProvider>().clear();
           await context.read<AuthProvider>().logout();
         },
         onMyOrders: () {

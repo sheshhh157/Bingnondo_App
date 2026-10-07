@@ -24,6 +24,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/cart_models.dart';
 import '../../services/cart_provider.dart';
+import '../../services/orders_provider.dart';
 import '../../services/gcash_receipt_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
@@ -412,7 +413,13 @@ class _PaymentStepState extends State<_PaymentStep> {
             ? 'CONFIRM & PLACE ORDER'
             : 'UPLOAD RECEIPT FIRST')
             : 'PLACE ORDER (COD)',
-        onPressed:  () => cart.placeOrder(),
+        onPressed:  () async {
+          final res = await cart.placeOrder();
+          if (res != null && context.mounted) {
+            // New order → unlock "Message Staff" immediately
+            context.read<OrdersProvider>().loadOrders();
+          }
+        },
       ),
     ]);
   }

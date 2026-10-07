@@ -3,6 +3,18 @@
 
 import 'tracking_models.dart';
 
+// Postgres NUMERIC comes through JSON as a String ("250.00"); accept both.
+double _toDouble(dynamic v) {
+  if (v is num) return v.toDouble();
+  return double.tryParse(v?.toString() ?? '') ?? 0.0;
+}
+
+int _toInt(dynamic v) {
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v?.toString() ?? '') ?? 0;
+}
+
 class OrderSummary {
   final int id;
   final String orderNumber;
@@ -36,11 +48,11 @@ class OrderSummary {
     }
 
     return OrderSummary(
-      id: json['id'] as int,
-      orderNumber: json['order_number'] as String,
+      id: _toInt(json['id']),
+      orderNumber: json['order_number']?.toString() ?? '',
       status: mappedStatus,
-      totalAmount: (json['total_amount'] as num).toDouble(),
-      itemCount: json['item_count'] as int? ?? 0,
+      totalAmount: _toDouble(json['total_amount']),
+      itemCount: _toInt(json['item_count']),
       paymentMethod: json['payment_method'] as String? ?? 'cod',
       createdAt: DateTime.parse(json['created_at'] as String),
     );
