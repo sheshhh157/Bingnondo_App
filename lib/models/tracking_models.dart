@@ -252,3 +252,82 @@ class SupportChat {
 
   bool get isLocked => status == ChatStatus.locked;
 }
+
+// ─── §1.6 Timeline Models ──────────────────────────────────────────────────────
+// NEW — added for GET /api/orders/:id/timeline
+
+/// One step in the order status timeline stepper.
+class TimelineStep {
+  final String status;
+  final String label;
+  final DateTime? changedAt;
+  final bool isCompleted;
+  final bool isCurrent;
+
+  const TimelineStep({
+    required this.status,
+    required this.label,
+    this.changedAt,
+    required this.isCompleted,
+    required this.isCurrent,
+  });
+
+  factory TimelineStep.fromJson(Map<String, dynamic> json) => TimelineStep(
+    status:      json['status']       as String,
+    label:       json['label']        as String,
+    changedAt:   json['changed_at'] != null
+        ? DateTime.tryParse(json['changed_at'] as String)
+        : null,
+    isCompleted: json['is_completed'] as bool? ?? false,
+    isCurrent:   json['is_current']   as bool? ?? false,
+  );
+}
+
+/// Full timeline response from GET /api/orders/:id/timeline
+class OrderTimeline {
+  final int orderId;
+  final String orderNumber;
+  final String currentStatus;
+  final List<TimelineStep> steps;
+
+  const OrderTimeline({
+    required this.orderId,
+    required this.orderNumber,
+    required this.currentStatus,
+    required this.steps,
+  });
+
+  factory OrderTimeline.fromJson(Map<String, dynamic> json) => OrderTimeline(
+    orderId:       json['order_id']       as int,
+    orderNumber:   json['order_number']   as String,
+    currentStatus: json['current_status'] as String,
+    steps: (json['timeline'] as List<dynamic>)
+        .map((e) => TimelineStep.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+
+  TimelineStep? get currentStep =>
+      steps.where((s) => s.isCurrent).firstOrNull;
+}
+
+/// Lightweight poll response from GET /api/orders/:id/status
+class OrderStatusPoll {
+  final int id;
+  final String status;
+  final bool canCancel;
+  final String? paymentStatus;
+
+  const OrderStatusPoll({
+    required this.id,
+    required this.status,
+    required this.canCancel,
+    this.paymentStatus,
+  });
+
+  factory OrderStatusPoll.fromJson(Map<String, dynamic> json) => OrderStatusPoll(
+    id:            json['id']             as int,
+    status:        json['status']         as String,
+    canCancel:     json['can_cancel']     as bool? ?? false,
+    paymentStatus: json['payment_status'] as String?,
+  );
+}

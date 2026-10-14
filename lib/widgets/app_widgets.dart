@@ -550,3 +550,71 @@ class LanternLoader extends StatelessWidget {
     );
   }
 }
+
+// ─── Food thumbnail ───────────────────────────────────────────────────────────
+// Reusable rounded food image with graceful placeholder + "sold out" overlay.
+class FoodThumb extends StatelessWidget {
+  final String? url;
+  final double size;
+  final bool isUnavailable;
+  final double radius;
+
+  const FoodThumb({
+    super.key,
+    required this.url,
+    this.size = 64,
+    this.isUnavailable = false,
+    this.radius = AppRadius.md,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceWarm,
+          border: Border.all(
+            color: isUnavailable
+                ? AppColors.error.withOpacity(0.4)
+                : AppColors.border,
+          ),
+          borderRadius: BorderRadius.circular(radius),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _image(),
+            if (isUnavailable)
+              Container(
+                color: Colors.black.withOpacity(0.45),
+                alignment: Alignment.center,
+                child: const Icon(Icons.block_rounded,
+                    color: Colors.white, size: 22),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _image() {
+    if (url != null && url!.isNotEmpty) {
+      return Image.network(
+        url!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _ph(),
+      );
+    }
+    return _ph();
+  }
+
+  Widget _ph() => Container(
+    color: AppColors.surfaceWarm,
+    alignment: Alignment.center,
+    child: Icon(Icons.ramen_dining_rounded,
+        color: AppColors.gold, size: size * 0.4),
+  );
+}

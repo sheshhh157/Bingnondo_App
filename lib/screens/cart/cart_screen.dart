@@ -170,9 +170,13 @@ class _CartScreenState extends State<CartScreen>
   // ─── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context, CartProvider cart) {
     return Container(
-      color: AppColors.primaryDark,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryDark,
+        borderRadius:
+        BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+      ),
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+          AppSpacing.sm, AppSpacing.sm, AppSpacing.sm, AppSpacing.md),
       child: Row(
         children: [
           IconButton(
@@ -181,28 +185,47 @@ class _CartScreenState extends State<CartScreen>
             onPressed: () => Navigator.pop(context),
           ),
           Expanded(
-            child: Text(
-              'Your Order',
-              style: GoogleFonts.playfairDisplaySc(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textOnDark,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your Order',
+                  style: GoogleFonts.playfairDisplaySc(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textOnDark,
+                  ),
+                ),
+                if (!cart.isEmpty)
+                  Text(
+                    '${cart.totalItemCount} '
+                        '${cart.totalItemCount == 1 ? 'item' : 'items'} · '
+                        '₱${cart.totalAmount.toStringAsFixed(2)}',
+                    style: GoogleFonts.karla(
+                      fontSize: 12,
+                      color: AppColors.textOnDark.withOpacity(0.75),
+                    ),
+                  ),
+              ],
             ),
           ),
           if (!cart.isEmpty)
-            TextButton(
+            TextButton.icon(
               onPressed: () => _showClearConfirm(context, cart),
-              style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm, vertical: 4)),
-              child: Text(
+              icon: const Icon(Icons.delete_outline_rounded,
+                  size: 16, color: AppColors.gold),
+              label: Text(
                 'Clear',
                 style: GoogleFonts.karla(
                   fontSize: 13,
-                  color: AppColors.gold.withOpacity(0.8),
+                  color: AppColors.gold,
                   fontWeight: FontWeight.w600,
                 ),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.gold,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.sm, vertical: 4),
               ),
             ),
         ],
@@ -228,10 +251,53 @@ class _CartScreenState extends State<CartScreen>
             ),
           ),
 
+        // Section label
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.lg, AppSpacing.md, AppSpacing.sm),
+            child: Row(
+              children: [
+                Text(
+                  'ITEMS',
+                  style: GoogleFonts.playfairDisplaySc(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Text(
+                    '${cart.totalItemCount}',
+                    style: GoogleFonts.karla(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gold,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  'Swipe to remove',
+                  style: AppTextStyles.caption(context),
+                ),
+              ],
+            ),
+          ),
+        ),
+
         // Items
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+              AppSpacing.md, 0, AppSpacing.md, 0),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
                   (context, i) {
@@ -243,14 +309,22 @@ class _CartScreenState extends State<CartScreen>
                     false;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  child: _CartItemRow(
-                    item: item,
-                    isUnavailable: isUnavailable,
-                    onIncrement: () => cart.incrementQuantity(item.menuItemId),
-                    onDecrement: () => cart.decrementQuantity(item.menuItemId),
-                    onRemove: () => cart.removeItem(item.menuItemId),
-                    onNoteChanged: (note) =>
-                        cart.updateNote(item.menuItemId, note),
+                  child: Dismissible(
+                    key: ValueKey(item.menuItemId),
+                    direction: DismissDirection.endToStart,
+                    background: _dismissBackground(),
+                    onDismissed: (_) => cart.removeItem(item.menuItemId),
+                    child: _CartItemRow(
+                      item: item,
+                      isUnavailable: isUnavailable,
+                      onIncrement: () =>
+                          cart.incrementQuantity(item.menuItemId),
+                      onDecrement: () =>
+                          cart.decrementQuantity(item.menuItemId),
+                      onRemove: () => cart.removeItem(item.menuItemId),
+                      onNoteChanged: (note) =>
+                          cart.updateNote(item.menuItemId, note),
+                    ),
                   ),
                 );
               },
@@ -282,6 +356,34 @@ class _CartScreenState extends State<CartScreen>
 
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ],
+    );
+  }
+
+  Widget _dismissBackground() {
+    return Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.only(right: AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.error.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.delete_outline_rounded,
+              color: AppColors.error, size: 22),
+          const SizedBox(height: 2),
+          Text(
+            'Remove',
+            style: GoogleFonts.karla(
+              fontSize: 11,
+              color: AppColors.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -345,7 +447,7 @@ class _CartScreenState extends State<CartScreen>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Total',
+                  Text('Total (${cart.totalItemCount})',
                       style: AppTextStyles.label(context)
                           .copyWith(color: AppColors.textMuted)),
                   Text(
@@ -471,13 +573,23 @@ class _CartItemRowState extends State<_CartItemRow> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Item name + unavailable tag
+                  // ── Food thumbnail ──────────────────────────────────
+                  FoodThumb(
+                    url: widget.item.photoUrl,
+                    size: 68,
+                    isUnavailable: widget.isUnavailable,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+
+                  // ── Details ─────────────────────────────────────────
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           widget.item.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.playfairDisplaySc(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -485,63 +597,57 @@ class _CartItemRowState extends State<_CartItemRow> {
                             height: 1.3,
                           ),
                         ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '₱${widget.item.price.toStringAsFixed(2)} each',
+                          style: GoogleFonts.karla(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
                         if (widget.isUnavailable) ...[
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.error.withOpacity(0.1),
-                                borderRadius:
-                                BorderRadius.circular(AppRadius.pill),
-                                border: Border.all(
-                                    color: AppColors.error.withOpacity(0.3)),
-                              ),
-                              child: Text(
-                                'Sold out — remove to proceed',
-                                style: GoogleFonts.karla(
-                                    fontSize: 10,
-                                    color: AppColors.error,
-                                    fontWeight: FontWeight.w600),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withOpacity(0.1),
+                              borderRadius:
+                              BorderRadius.circular(AppRadius.pill),
+                              border: Border.all(
+                                  color: AppColors.error.withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              'Sold out — remove to proceed',
+                              style: GoogleFonts.karla(
+                                  fontSize: 10,
+                                  color: AppColors.error,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: AppSpacing.sm),
+                        Row(
+                          children: [
+                            _QuantityControl(
+                              quantity: widget.item.quantity,
+                              onIncrement: widget.onIncrement,
+                              onDecrement: widget.onDecrement,
+                              onRemove: widget.onRemove,
+                            ),
+                            const Spacer(),
+                            Text(
+                              '₱${widget.item.subtotal.toStringAsFixed(2)}',
+                              style: GoogleFonts.playfairDisplaySc(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
                               ),
                             ),
-                          ]),
-                        ],
-                        const SizedBox(height: 4),
-                        Text(
-                          '₱${widget.item.price.toStringAsFixed(2)}',
-                          style: GoogleFonts.karla(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                          ),
+                          ],
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-
-                  // Subtotal
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '₱${widget.item.subtotal.toStringAsFixed(2)}',
-                        style: GoogleFonts.playfairDisplaySc(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      // Quantity control
-                      _QuantityControl(
-                        quantity: widget.item.quantity,
-                        onIncrement: widget.onIncrement,
-                        onDecrement: widget.onDecrement,
-                        onRemove: widget.onRemove,
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -685,8 +791,11 @@ class _QBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(6),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
         child: Icon(icon, size: 16, color: color),
       ),
     );

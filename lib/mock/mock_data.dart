@@ -225,42 +225,67 @@ String kMockStaffReply(String message) {
   return 'Thanks for reaching out! We\'ll attend to your concern shortly.';
 }
 
-// ─── §Announcements: Mock Data ────────────────────────────────────────────────
-// kMockAnnouncements — shown in the lantern panel on HomeMenuScreen.
-// Set is_new: true to trigger the auto-open + new badge dot on the lantern.
-// Change type to: 'discount' | 'new_menu' | 'event' | 'general'
-const List<Map<String, dynamic>> kMockAnnouncements = [
+// ─── §Reviews: Mock Data ──────────────────────────────────────────────────────
+// Pool of sample reviews. `kMockReviewsForItem` returns a stable, varied slice
+// per item so the detail sheet looks realistic while the backend is pending.
+const List<Map<String, dynamic>> kMockReviewPool = [
   {
     'id': 1,
-    'type': 'discount',
-    'title': '15% Off This Weekend!',
-    'body': 'Enjoy 15% off on all Dimsum orders every Saturday and Sunday. '
-        'Use code BINGNONDO15 at checkout. Valid until September 30, 2026.',
-    'cta_label': 'Order Now',
-    'cta_route': '/menu',
-    'is_new': true,
-    'published_at': '2026-09-07T08:00:00.000Z',
+    'author_name': 'Mariel S.',
+    'rating': 5.0,
+    'comment': 'Sobrang sarap! Authentic ang lasa, parang nasa Binondo talaga. '
+        'Bababalik-balikan ko ito.',
+    'created_at': '2026-09-28T09:12:00.000Z',
   },
   {
     'id': 2,
-    'type': 'new_menu',
-    'title': 'New: Peking Duck Rice Plate',
-    'body': 'Authentic Peking Duck slow-roasted for 24 hours, served on '
-        'jasmine rice with hoisin glaze and spring onions. Now available daily!',
-    'cta_label': 'See Menu',
-    'cta_route': '/menu',
-    'is_new': true,
-    'published_at': '2026-09-06T10:00:00.000Z',
+    'author_name': 'Jonas R.',
+    'rating': 4.0,
+    'comment': 'Great value for the portion. Medyo matagal lang ang waiting '
+        'time noong peak hour.',
+    'created_at': '2026-09-24T14:05:00.000Z',
   },
   {
     'id': 3,
-    'type': 'event',
-    'title': 'Mid-Autumn Festival Specials',
-    'body': 'Celebrate the Mid-Autumn Festival with us! Special mooncake '
-        'platters and Taro Milk Tea bundles available September 17–20.',
-    'cta_label': 'Learn More',
-    'cta_route': null,
-    'is_new': false,
-    'published_at': '2026-09-05T09:00:00.000Z',
+    'author_name': 'Alyssa T.',
+    'rating': 5.0,
+    'comment': 'Perfectly seasoned and served hot. Recommended!',
+    'created_at': '2026-09-19T18:40:00.000Z',
+  },
+  {
+    'id': 4,
+    'author_name': 'Marco D.',
+    'rating': 3.0,
+    'comment': 'Okay naman, pero sana mas malaki ang serving para sa price.',
+    'created_at': '2026-09-15T11:22:00.000Z',
+  },
+  {
+    'id': 5,
+    'author_name': 'Katrina L.',
+    'rating': 5.0,
+    'comment': 'Favourite ko na! Consistent ang quality every order.',
+    'created_at': '2026-09-10T20:15:00.000Z',
+  },
+  {
+    'id': 6,
+    'author_name': 'Paolo M.',
+    'rating': 4.0,
+    'comment': 'Solid comfort food. Presentation is neat and appetising.',
+    'created_at': '2026-09-04T12:30:00.000Z',
+  },
+  {
+    'id': 7,
+    'author_name': 'Bea C.',
+    'rating': 4.0,
+    'comment': 'Masarap at bagong luto. Ang packaging ay maayos din.',
+    'created_at': '2026-08-30T16:48:00.000Z',
   },
 ];
+
+List<Map<String, dynamic>> kMockReviewsForItem(int itemId) {
+  final pool = kMockReviewPool;
+  // Deterministic slice: 2..5 reviews, starting at a stable offset per item.
+  final count = 2 + (itemId.abs() % 4);
+  final start = itemId.abs() % pool.length;
+  return List.generate(count, (i) => pool[(start + i) % pool.length]);
+}

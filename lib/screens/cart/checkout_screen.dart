@@ -81,8 +81,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
               opacity: _fade,
               child: Column(
                 children: [
-                  _buildHeader(context, cart),
-                  _buildStepIndicator(cart),
+                  _buildTopBar(context, cart),
                   Expanded(child: _buildBody(context, cart)),
                 ],
               ),
@@ -93,106 +92,134 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     );
   }
 
-  // ─── Header ────────────────────────────────────────────────────────────────
-  Widget _buildHeader(BuildContext context, CartProvider cart) {
+  // ─── Top bar (header + step indicator) ─────────────────────────────────────
+  Widget _buildTopBar(BuildContext context, CartProvider cart) {
     final isConfirmation = cart.step == CheckoutStep.confirmation;
+
     return Container(
-      color:   AppColors.primaryDark,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryDark,
+        borderRadius:
+        BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+      ),
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
-      child: Row(children: [
-        if (!isConfirmation)
-          IconButton(
-            icon:      const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            color:     AppColors.textOnDark,
-            onPressed: () => Navigator.pop(context),
-          )
-        else
-          const SizedBox(width: 48),
-        Expanded(
-          child: Text(
-            isConfirmation ? 'Order Placed!' : 'Checkout',
-            style: GoogleFonts.playfairDisplaySc(
-              fontSize:   20,
-              fontWeight: FontWeight.w700,
-              color:      AppColors.textOnDark,
+          AppSpacing.sm, AppSpacing.sm, AppSpacing.sm, AppSpacing.md),
+      child: Column(
+        children: [
+          Row(children: [
+            if (!isConfirmation)
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                color: AppColors.textOnDark,
+                onPressed: () => Navigator.pop(context),
+              )
+            else
+              const SizedBox(width: 48),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isConfirmation ? 'Order Placed!' : 'Checkout',
+                    style: GoogleFonts.playfairDisplaySc(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textOnDark,
+                    ),
+                  ),
+                  if (!isConfirmation)
+                    Text(
+                      'Review your order and confirm',
+                      style: GoogleFonts.karla(
+                        fontSize: 12,
+                        color: AppColors.textOnDark.withOpacity(0.7),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ),
-      ]),
+            if (!isConfirmation) const SizedBox(width: 48),
+          ]),
+          if (!isConfirmation) ...[
+            const SizedBox(height: AppSpacing.md),
+            _buildStepIndicator(cart),
+          ],
+        ],
+      ),
     );
   }
 
   // ─── Step indicator ────────────────────────────────────────────────────────
   Widget _buildStepIndicator(CartProvider cart) {
-    if (cart.step == CheckoutStep.confirmation) return const SizedBox.shrink();
-
     const steps     = ['Payment', 'Done'];
     final currentIdx = cart.step == CheckoutStep.payment ? 0 : 1;
 
-    return Container(
-      color:   AppColors.primaryDark,
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
-      child: Row(
-        children: List.generate(steps.length * 2 - 1, (i) {
-          if (i.isOdd) {
-            return Expanded(
-              child: Container(
-                height: 2,
-                color:  (i ~/ 2) < currentIdx
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: List.generate(steps.length * 2 - 1, (i) {
+        if (i.isOdd) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 13, left: 10, right: 10),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 44,
+              height: 2,
+              decoration: BoxDecoration(
+                color: (i ~/ 2) < currentIdx
                     ? AppColors.gold
                     : AppColors.textOnDark.withOpacity(0.2),
-              ),
-            );
-          }
-          final idx      = i ~/ 2;
-          final isDone   = idx < currentIdx;
-          final isActive = idx == currentIdx;
-          return Column(children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: 28, height: 28,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isDone
-                    ? AppColors.gold
-                    : isActive
-                    ? AppColors.textOnDark
-                    : Colors.transparent,
-                border: Border.all(
-                  color: isDone || isActive
-                      ? AppColors.gold
-                      : AppColors.textOnDark.withOpacity(0.3),
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: isDone
-                    ? const Icon(Icons.check_rounded,
-                    size: 14, color: AppColors.primaryDark)
-                    : Text('${idx + 1}',
-                    style: GoogleFonts.karla(
-                      fontSize:   12,
-                      fontWeight: FontWeight.w700,
-                      color: isActive
-                          ? AppColors.primaryDark
-                          : AppColors.textOnDark.withOpacity(0.4),
-                    )),
+                borderRadius: BorderRadius.circular(1),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(steps[idx],
-                style: GoogleFonts.karla(
-                  fontSize:   10,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                  color: isDone || isActive
-                      ? AppColors.gold
-                      : AppColors.textOnDark.withOpacity(0.4),
-                )),
-          ]);
-        }),
-      ),
+          );
+        }
+        final idx      = i ~/ 2;
+        final isDone   = idx < currentIdx;
+        final isActive = idx == currentIdx;
+        return Column(children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isDone
+                  ? AppColors.gold
+                  : isActive
+                  ? AppColors.textOnDark
+                  : Colors.transparent,
+              border: Border.all(
+                color: isDone || isActive
+                    ? AppColors.gold
+                    : AppColors.textOnDark.withOpacity(0.3),
+                width: 2,
+              ),
+            ),
+            child: Center(
+              child: isDone
+                  ? const Icon(Icons.check_rounded,
+                  size: 14, color: AppColors.primaryDark)
+                  : Text('${idx + 1}',
+                  style: GoogleFonts.karla(
+                    fontSize:   12,
+                    fontWeight: FontWeight.w700,
+                    color: isActive
+                        ? AppColors.primaryDark
+                        : AppColors.textOnDark.withOpacity(0.4),
+                  )),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(steps[idx],
+              style: GoogleFonts.karla(
+                fontSize:   10,
+                fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                color: isDone || isActive
+                    ? AppColors.gold
+                    : AppColors.textOnDark.withOpacity(0.4),
+              )),
+        ]);
+      }),
     );
   }
 
@@ -828,6 +855,19 @@ class _ConfirmationStep extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               const ChineseDivider(),
+              const SizedBox(height: AppSpacing.md),
+              _ConfirmRow(
+                label: 'Total',
+                value: '₱${order.totalAmount.toStringAsFixed(2)}',
+                emphasize: true,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              _ConfirmRow(
+                label: 'Payment',
+                value: isGcash ? 'GCash' : 'Cash on Delivery',
+              ),
+              const SizedBox(height: AppSpacing.md),
+              const ChineseDivider(),
             ]),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -915,6 +955,42 @@ class _ConfirmationStep extends StatelessWidget {
   }
 }
 
+// ─── Confirmation row ─────────────────────────────────────────────────────────
+class _ConfirmRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool emphasize;
+  const _ConfirmRow({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label,
+            style: AppTextStyles.bodyMedium(context)
+                .copyWith(color: AppColors.textMuted)),
+        Text(
+          value,
+          style: emphasize
+              ? GoogleFonts.playfairDisplaySc(
+              fontSize:   18,
+              fontWeight: FontWeight.w700,
+              color:      AppColors.primary)
+              : GoogleFonts.karla(
+              fontSize:   14,
+              fontWeight: FontWeight.w700,
+              color:      AppColors.textPrimary),
+        ),
+      ],
+    );
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Placing Order overlay
 // ══════════════════════════════════════════════════════════════════════════════
@@ -983,27 +1059,27 @@ class _CheckoutBottomBar extends StatelessWidget {
               offset:     const Offset(0, -4)),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize:       MainAxisSize.min,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Order Total',
                   style: AppTextStyles.label(context)
-                      .copyWith(color: AppColors.textMuted, fontSize: 11)),
+                      .copyWith(color: AppColors.textMuted)),
               Text(
                 '₱${cart.totalAmount.toStringAsFixed(2)}',
                 style: GoogleFonts.playfairDisplaySc(
-                    fontSize:   20,
+                    fontSize:   22,
                     fontWeight: FontWeight.w700,
                     color:      AppColors.primary),
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.md),
           SizedBox(
-            width: 196,
+            width: double.infinity,
             child: PrimaryButton(
               label:     label,
               onPressed: isEnabled ? onPressed : null,
@@ -1128,6 +1204,14 @@ class _PaymentOption extends StatelessWidget {
     required this.onTap,
   });
 
+  IconData get _icon => method == PaymentMethod.gcash
+      ? Icons.account_balance_wallet_rounded
+      : Icons.payments_rounded;
+
+  Color get _tint => method == PaymentMethod.gcash
+      ? const Color(0xFF1E88E5)
+      : AppColors.success;
+
   @override
   Widget build(BuildContext context) {
     final isSelected = method == selected;
@@ -1148,22 +1232,21 @@ class _PaymentOption extends StatelessWidget {
           boxShadow: AppShadows.card,
         ),
         child: Row(children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 22, height: 22,
+          // ── Method glyph ─────────────────────────────────────────────
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              shape:  BoxShape.circle,
-              border: Border.all(
-                  color: isSelected ? AppColors.primary : AppColors.border,
-                  width: 2),
-              color: isSelected ? AppColors.primary : Colors.transparent,
+              color: _tint.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: _tint.withOpacity(0.25)),
             ),
-            child: isSelected
-                ? const Icon(Icons.check_rounded,
-                size: 13, color: AppColors.textOnDark)
-                : null,
+            child: Icon(_icon, color: _tint, size: 22),
           ),
           const SizedBox(width: AppSpacing.md),
+
+          // ── Label + description ──────────────────────────────────────
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1180,6 +1263,24 @@ class _PaymentOption extends StatelessWidget {
                     style: AppTextStyles.bodySmall(context)),
               ],
             ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+
+          // ── Radio ────────────────────────────────────────────────────
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 22, height: 22,
+            decoration: BoxDecoration(
+              shape:  BoxShape.circle,
+              border: Border.all(
+                  color: isSelected ? AppColors.primary : AppColors.border,
+                  width: 2),
+              color: isSelected ? AppColors.primary : Colors.transparent,
+            ),
+            child: isSelected
+                ? const Icon(Icons.check_rounded,
+                size: 13, color: AppColors.textOnDark)
+                : null,
           ),
         ]),
       ),
@@ -1204,27 +1305,36 @@ class _OrderSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Order Summary', style: AppTextStyles.label(context)),
+          Row(children: [
+            Text('Order Summary', style: AppTextStyles.label(context)),
+            const Spacer(),
+            Text('${cart.totalItemCount} '
+                '${cart.totalItemCount == 1 ? 'item' : 'items'}',
+                style: AppTextStyles.caption(context)),
+          ]),
           const SizedBox(height: AppSpacing.md),
           ...cart.items.map((item) => Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: Row(children: [
+              FoodThumb(url: item.photoUrl, size: 40, radius: AppRadius.sm),
+              const SizedBox(width: AppSpacing.sm),
               SizedBox(
-                width: 28,
+                width: 26,
                 child: Text('${item.quantity}×',
                     style: GoogleFonts.karla(
                         fontSize:   13,
                         fontWeight: FontWeight.w700,
                         color:      AppColors.gold)),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 2),
               Expanded(
                 child: Text(item.name,
                     style: AppTextStyles.bodyMedium(context)
                         .copyWith(fontSize: 13),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis),
               ),
+              const SizedBox(width: AppSpacing.sm),
               Text('₱${item.subtotal.toStringAsFixed(2)}',
                   style: GoogleFonts.karla(
                       fontSize:   13,

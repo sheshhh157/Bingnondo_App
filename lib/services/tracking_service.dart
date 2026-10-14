@@ -47,6 +47,7 @@ class TrackingService {
   // ─── §1.6 Order Tracking ──────────────────────────────────────────────────
 
   /// GET /api/orders/:id
+  /// Full order detail — used on initial screen load.
   Future<OrderDetail> fetchOrder(int orderId) async {
     try {
       final headers = await _authHeaders();
@@ -54,6 +55,38 @@ class TrackingService {
           .get(Uri.parse('$_baseUrl/api/orders/$orderId'), headers: headers)
           .timeout(_timeout);
       return OrderDetail.fromJson(_handleResponse(response));
+    } on SocketException {
+      throw const TrackingApiException('No internet connection.');
+    } on _TimeoutException {
+      throw const TrackingApiException('Connection timed out.');
+    }
+  }
+
+  /// GET /api/orders/:id/timeline  — NEW §1.6
+  /// Full status-history timeline for the stepper UI.
+  Future<OrderTimeline> fetchOrderTimeline(int orderId) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await _client
+          .get(Uri.parse('$_baseUrl/api/orders/$orderId/timeline'), headers: headers)
+          .timeout(_timeout);
+      return OrderTimeline.fromJson(_handleResponse(response));
+    } on SocketException {
+      throw const TrackingApiException('No internet connection.');
+    } on _TimeoutException {
+      throw const TrackingApiException('Connection timed out.');
+    }
+  }
+
+  /// GET /api/orders/:id/status  — NEW §1.6
+  /// Lightweight poll used as Socket.io fallback (every 15 s).
+  Future<OrderStatusPoll> fetchOrderStatus(int orderId) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await _client
+          .get(Uri.parse('$_baseUrl/api/orders/$orderId/status'), headers: headers)
+          .timeout(_timeout);
+      return OrderStatusPoll.fromJson(_handleResponse(response));
     } on SocketException {
       throw const TrackingApiException('No internet connection.');
     } on _TimeoutException {
@@ -121,7 +154,7 @@ class TrackingService {
     }
   }
 
-  /// PUT /api/notifications/:id/read  (mark support messages read)
+  /// PUT /api/support-chat/read  (mark support messages read)
   Future<void> markMessagesRead() async {
     try {
       final headers = await _authHeaders();

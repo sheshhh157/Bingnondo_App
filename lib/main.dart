@@ -10,7 +10,6 @@ import 'services/support_chat_provider.dart';
 import 'services/orders_provider.dart';
 import 'services/notifications_provider.dart';
 import 'services/account_settings_provider.dart';
-import 'services/announcement_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_widgets.dart';
 import 'screens/auth/login_screen.dart';
@@ -40,7 +39,6 @@ void main() async {
         ChangeNotifierProvider(create: (_) => NotificationsProvider()),
         // §1.9
         ChangeNotifierProvider(create: (_) => AccountSettingsProvider()),
-        ChangeNotifierProvider(create: (_) => AnnouncementProvider()),
       ],
       child: const BingnondoApp(),
     ),
