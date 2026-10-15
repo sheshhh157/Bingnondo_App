@@ -80,7 +80,6 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
           child: Column(
             children: [
               _buildHeader(context),
-              _buildTabBar(),
               Expanded(
                 child: Consumer<OrdersProvider>(
                   builder: (context, provider, _) =>
@@ -94,69 +93,103 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
     );
   }
 
-  // ─── Header ────────────────────────────────────────────────────────────────
+  // ─── Header (title + tabs, rounded dark panel) ──────────────────────────────
   Widget _buildHeader(BuildContext context) {
     return Container(
-      color: AppColors.primaryDark,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryDark,
+        borderRadius:
+            BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+      ),
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
-      child: Row(
+      child: Column(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            color: AppColors.textOnDark,
-            onPressed: () => Navigator.pop(context),
-          ),
-          Expanded(
-            child: Text(
-              'My Orders',
-              style: GoogleFonts.playfairDisplaySc(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
                 color: AppColors.textOnDark,
+                onPressed: () => Navigator.pop(context),
               ),
-            ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'My Orders',
+                      style: GoogleFonts.playfairDisplaySc(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textOnDark,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Track and review your orders',
+                      style: GoogleFonts.karla(
+                        fontSize: 11,
+                        color: AppColors.textOnDark.withOpacity(0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Refresh button
+              Consumer<OrdersProvider>(
+                builder: (_, provider, __) => IconButton(
+                  icon: provider.state == OrdersLoadState.loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              color: AppColors.gold, strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded,
+                          color: AppColors.gold, size: 20),
+                  onPressed: provider.state == OrdersLoadState.loading
+                      ? null
+                      : () => provider.refresh(),
+                ),
+              ),
+            ],
           ),
-          // Refresh button
-          Consumer<OrdersProvider>(
-            builder: (_, provider, __) => IconButton(
-              icon: provider.state == OrdersLoadState.loading
-                  ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    color: AppColors.gold, strokeWidth: 2),
-              )
-                  : const Icon(Icons.refresh_rounded,
-                  color: AppColors.gold, size: 20),
-              onPressed: provider.state == OrdersLoadState.loading
-                  ? null
-                  : () => provider.refresh(),
-            ),
-          ),
+          const SizedBox(height: AppSpacing.sm),
+          _buildTabBar(),
         ],
       ),
     );
   }
 
-  // ─── Tab Bar ───────────────────────────────────────────────────────────────
+  // ─── Tab Bar (pill segmented control) ───────────────────────────────────────
   Widget _buildTabBar() {
     return Container(
-      color: AppColors.primaryDark,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
       child: TabBar(
         controller: _tabCtrl,
-        labelColor: AppColors.gold,
-        unselectedLabelColor: AppColors.textOnDark.withOpacity(0.5),
-        indicatorColor: AppColors.gold,
-        indicatorWeight: 2.5,
+        labelColor: AppColors.primaryDark,
+        unselectedLabelColor: AppColors.textOnDark.withOpacity(0.7),
+        indicator: BoxDecoration(
+          color: AppColors.gold,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicatorPadding: EdgeInsets.zero,
         dividerColor: Colors.transparent,
+        splashBorderRadius: BorderRadius.circular(AppRadius.pill),
+        overlayColor: WidgetStateProperty.all(
+            AppColors.gold.withOpacity(0.12)),
         labelStyle: GoogleFonts.karla(
             fontSize: 13, fontWeight: FontWeight.w700),
-        unselectedLabelStyle:
-        GoogleFonts.karla(fontSize: 13, fontWeight: FontWeight.w400),
+        unselectedLabelStyle: GoogleFonts.karla(
+            fontSize: 13, fontWeight: FontWeight.w500),
         tabs: const [
-          Tab(text: 'Active'),
-          Tab(text: 'Past Orders'),
+          Tab(height: 36, text: 'Active'),
+          Tab(height: 36, text: 'Past Orders'),
         ],
       ),
     );
@@ -212,24 +245,25 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Three lanterns
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CustomPaint(
-                    size: const Size(30, 44),
-                    painter: _LanternPainter(tilt: -0.15, opacity: 0.4)),
-                const SizedBox(width: 10),
-                CustomPaint(
-                    size: const Size(40, 58),
-                    painter: _LanternPainter(tilt: 0, opacity: 0.55)),
-                const SizedBox(width: 10),
-                CustomPaint(
-                    size: const Size(30, 44),
-                    painter: _LanternPainter(tilt: 0.15, opacity: 0.4)),
-              ],
+            // Icon badge
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.gold.withOpacity(0.1),
+                border: Border.all(
+                    color: AppColors.gold.withOpacity(0.3), width: 1.5),
+              ),
+              child: Icon(
+                isActive
+                    ? Icons.receipt_long_rounded
+                    : Icons.history_rounded,
+                color: AppColors.gold,
+                size: 40,
+              ),
             ),
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.lg),
             Text(
               isActive ? 'No active orders' : 'No past orders yet',
               style: AppTextStyles.headline(context),
@@ -307,141 +341,174 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isActive = order.isActive;
+    final isGcash  = order.paymentMethod == 'gcash';
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.card,
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: AppShadows.card,
+      ),
+      child: Material(
+        color: AppColors.card,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(
+          side: BorderSide(
             color: isActive
                 ? AppColors.gold.withOpacity(0.4)
                 : AppColors.border,
             width: isActive ? 1.5 : 1,
           ),
-          boxShadow: AppShadows.card,
         ),
-        child: Column(
-          children: [
-            // ── Top row: order number + status badge ─────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Left: order number + date
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          order.orderNumber,
-                          style: GoogleFonts.playfairDisplaySc(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                            letterSpacing: 0.3,
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            children: [
+              // ── Header: status icon + order number/date + badge ──────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+                child: Row(
+                  children: [
+                    _StatusIcon(status: order.status),
+                    const SizedBox(width: AppSpacing.sm + 2),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            order.orderNumber,
+                            style: GoogleFonts.playfairDisplaySc(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: 0.3,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _formatDate(order.createdAt),
-                          style: AppTextStyles.caption(context),
-                        ),
-                      ],
+                          const SizedBox(height: 3),
+                          Text(
+                            _formatDate(order.createdAt),
+                            style: AppTextStyles.caption(context),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  // Right: status badge
-                  _StatusBadge(status: order.status),
-                ],
-              ),
-            ),
-
-            // ── Divider ──────────────────────────────────────────────────
-            const Divider(
-                color: AppColors.border, height: 1, indent: 16, endIndent: 16),
-
-            // ── Bottom row: items count + amount + arrow ──────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
-              child: Row(
-                children: [
-                  // Items count
-                  Row(
-                    children: [
-                      CustomPaint(
-                        size: const Size(14, 14),
-                        painter: _BowlIconPainter(),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
-                        style: AppTextStyles.bodySmall(context),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(width: AppSpacing.md),
-
-                  // Payment method
-                  Row(
-                    children: [
-                      CustomPaint(
-                        size: const Size(14, 14),
-                        painter: _PayIconPainter(
-                            isGcash: order.paymentMethod == 'gcash'),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        order.paymentMethod == 'gcash'
-                            ? 'GCash'
-                            : 'Cash on Delivery',
-                        style: AppTextStyles.bodySmall(context),
-                      ),
-                    ],
-                  ),
-
-                  const Spacer(),
-
-                  // Total
-                  Text(
-                    '₱${order.totalAmount.toStringAsFixed(2)}',
-                    style: GoogleFonts.playfairDisplaySc(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-
-                  const SizedBox(width: AppSpacing.sm),
-
-                  // Arrow — only for active / trackable orders
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: isActive ? AppColors.gold : AppColors.textMuted,
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
-
-            // ── Active indicator bar at bottom ────────────────────────────
-            if (isActive)
-              Container(
-                height: 3,
-                decoration: BoxDecoration(
-                  color: AppColors.gold.withOpacity(0.6),
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(AppRadius.lg),
-                    bottomRight: Radius.circular(AppRadius.lg),
-                  ),
+                    const SizedBox(width: AppSpacing.sm),
+                    _StatusBadge(status: order.status),
+                  ],
                 ),
               ),
-          ],
+
+              // ── Divider ──────────────────────────────────────────────────
+              const Divider(
+                  color: AppColors.border, height: 1, indent: 16, endIndent: 16),
+
+              // ── Meta row: chips + total ──────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(AppSpacing.md,
+                    AppSpacing.sm + 2, AppSpacing.md, AppSpacing.md),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.xs + 2,
+                        children: [
+                          _MetaChip(
+                            icon: Icons.ramen_dining_rounded,
+                            label: '${order.itemCount} '
+                                '${order.itemCount == 1 ? 'item' : 'items'}',
+                          ),
+                          _MetaChip(
+                            icon: isGcash
+                                ? Icons.smartphone_rounded
+                                : Icons.payments_rounded,
+                            label: isGcash ? 'GCash' : 'Cash',
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      '₱${order.totalAmount.toStringAsFixed(2)}',
+                      style: GoogleFonts.playfairDisplaySc(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Footer ───────────────────────────────────────────────────
+              if (isActive)
+                Container(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.md,
+                      AppSpacing.sm + 2, AppSpacing.md, AppSpacing.sm + 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withOpacity(0.07),
+                    border: Border(
+                      top:
+                          BorderSide(color: AppColors.gold.withOpacity(0.2)),
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(AppRadius.lg),
+                      bottomRight: Radius.circular(AppRadius.lg),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.local_shipping_rounded,
+                          color: AppColors.gold, size: 16),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          order.status.description,
+                          style: GoogleFonts.karla(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Track',
+                        style: GoogleFonts.karla(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.gold,
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded,
+                          color: AppColors.gold, size: 18),
+                    ],
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm + 2),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        'View details',
+                        style: GoogleFonts.karla(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded,
+                          color: AppColors.textMuted, size: 18),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -456,6 +523,93 @@ class _OrderCard extends StatelessWidget {
     final m = dt.minute.toString().padLeft(2, '0');
     final period = dt.hour < 12 ? 'AM' : 'PM';
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year} · $h:$m $period';
+  }
+}
+
+// ─── Status Icon ───────────────────────────────────────────────────────────────
+class _StatusIcon extends StatelessWidget {
+  final OrderStatus status;
+  const _StatusIcon({required this.status});
+
+  IconData get _icon {
+    switch (status) {
+      case OrderStatus.pending:
+        return Icons.hourglass_top_rounded;
+      case OrderStatus.confirmed:
+        return Icons.verified_rounded;
+      case OrderStatus.preparing:
+        return Icons.soup_kitchen_rounded;
+      case OrderStatus.ready:
+        return Icons.restaurant_rounded;
+      case OrderStatus.outForDelivery:
+        return Icons.delivery_dining_rounded;
+      case OrderStatus.completed:
+        return Icons.check_circle_rounded;
+      case OrderStatus.cancelled:
+        return Icons.cancel_rounded;
+    }
+  }
+
+  Color get _color {
+    switch (status) {
+      case OrderStatus.pending:
+        return AppColors.textMuted;
+      case OrderStatus.completed:
+        return AppColors.success;
+      case OrderStatus.cancelled:
+        return AppColors.error;
+      default:
+        return AppColors.gold;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _color;
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withOpacity(0.1),
+        border: Border.all(color: color.withOpacity(0.25), width: 1),
+      ),
+      child: Center(child: Icon(_icon, color: color, size: 20)),
+    );
+  }
+}
+
+// ─── Meta Chip ─────────────────────────────────────────────────────────────────
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _MetaChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.textSecondary),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.karla(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -553,8 +707,14 @@ class _OrderCardSkeletonState extends State<_OrderCardSkeleton>
       builder: (_, __) {
         final col = Color.lerp(
             const Color(0xFFEFEBE4), const Color(0xFFDDD8CF), _a.value)!;
+        Widget bar(double w, double h, [double r = AppRadius.sm]) => Container(
+              width: w,
+              height: h,
+              decoration: BoxDecoration(
+                  color: col, borderRadius: BorderRadius.circular(r)),
+            );
         return Container(
-          height: 100,
+          height: 132,
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             color: AppColors.card,
@@ -563,31 +723,38 @@ class _OrderCardSkeletonState extends State<_OrderCardSkeleton>
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(height: 14, width: 160,
-                      decoration: BoxDecoration(color: col,
-                          borderRadius: BorderRadius.circular(AppRadius.sm))),
-                  Container(height: 22, width: 80,
-                      decoration: BoxDecoration(color: col,
-                          borderRadius: BorderRadius.circular(AppRadius.pill))),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration:
+                        BoxDecoration(color: col, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: AppSpacing.sm + 2),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        bar(150, 14),
+                        const SizedBox(height: 6),
+                        bar(96, 10),
+                      ],
+                    ),
+                  ),
+                  bar(72, 24, AppRadius.pill),
                 ],
               ),
-              Container(height: 10, width: 100,
-                  decoration: BoxDecoration(color: col,
-                      borderRadius: BorderRadius.circular(AppRadius.sm))),
+              bar(double.infinity, 1),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(height: 10, width: 120,
-                      decoration: BoxDecoration(color: col,
-                          borderRadius: BorderRadius.circular(AppRadius.sm))),
-                  Container(height: 14, width: 70,
-                      decoration: BoxDecoration(color: col,
-                          borderRadius: BorderRadius.circular(AppRadius.sm))),
+                  bar(70, 18, AppRadius.pill),
+                  const SizedBox(width: AppSpacing.sm),
+                  bar(64, 18, AppRadius.pill),
+                  const Spacer(),
+                  bar(64, 16),
                 ],
               ),
             ],
@@ -598,132 +765,5 @@ class _OrderCardSkeletonState extends State<_OrderCardSkeleton>
   }
 }
 
-// ─── Painters ──────────────────────────────────────────────────────────────────
-class _LanternPainter extends CustomPainter {
-  final double tilt;
-  final double opacity;
-  const _LanternPainter({required this.tilt, required this.opacity});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.translate(size.width / 2, size.height / 2);
-    canvas.rotate(tilt);
-    canvas.translate(-size.width / 2, -size.height / 2);
-
-    final gFill = Paint()
-      ..color = AppColors.gold.withOpacity(opacity)
-      ..style = PaintingStyle.fill;
-    final mFill = Paint()
-      ..color = AppColors.primaryDark.withOpacity(opacity)
-      ..style = PaintingStyle.fill;
-    final stroke = Paint()
-      ..color = AppColors.gold.withOpacity(opacity)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawLine(Offset(w / 2, 0), Offset(w / 2, h * 0.08), stroke);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(w * 0.1, h * 0.06, w * 0.8, h * 0.1),
-            const Radius.circular(3)),
-        gFill);
-
-    final body = Path()
-      ..moveTo(w * 0.05, h * 0.18)
-      ..quadraticBezierTo(0, h * 0.5, w * 0.05, h * 0.78)
-      ..lineTo(w * 0.95, h * 0.78)
-      ..quadraticBezierTo(w, h * 0.5, w * 0.95, h * 0.18)
-      ..close();
-    canvas.drawPath(body, mFill);
-    canvas.drawPath(body, stroke);
-
-    canvas.drawLine(Offset(w / 2, h * 0.18), Offset(w / 2, h * 0.78),
-        stroke..color = AppColors.gold.withOpacity(opacity * 0.4)..strokeWidth = 1);
-    canvas.drawLine(Offset(w * 0.05, h * 0.48), Offset(w * 0.95, h * 0.48),
-        stroke..color = AppColors.gold.withOpacity(opacity * 0.4)..strokeWidth = 1);
-
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(w * 0.1, h * 0.76, w * 0.8, h * 0.08),
-            const Radius.circular(3)),
-        gFill..color = AppColors.gold.withOpacity(opacity));
-
-    final tp = Paint()
-      ..color = AppColors.gold.withOpacity(opacity)
-      ..strokeWidth = 1
-      ..strokeCap = StrokeCap.round;
-    for (int i = 0; i < 4; i++) {
-      final x = w * 0.22 + i * w * 0.18;
-      canvas.drawLine(Offset(x, h * 0.84),
-          Offset(x + (i.isOdd ? 2.5 : -2.5), h), tp);
-    }
-    canvas.restore();
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter _) => false;
-}
-
-class _BowlIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = AppColors.textMuted
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-    canvas.drawOval(
-        Rect.fromLTWH(
-            1, size.height * 0.35, size.width - 2, size.height * 0.55),
-        p);
-    canvas.drawLine(
-        Offset(size.width * 0.18, size.height * 0.35),
-        Offset(size.width * 0.82, size.height * 0.35), p);
-    canvas.drawArc(
-        Rect.fromLTWH(size.width * 0.25, 0, size.width * 0.5, size.height * 0.45),
-        3.14 * 1.1, 3.14 * 0.8, false, p);
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter _) => false;
-}
-
-class _PayIconPainter extends CustomPainter {
-  final bool isGcash;
-  const _PayIconPainter({required this.isGcash});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = AppColors.textMuted
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-    if (isGcash) {
-      // Phone silhouette
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTWH(
-                  size.width * 0.2, 0, size.width * 0.6, size.height),
-              const Radius.circular(3)),
-          p);
-      canvas.drawCircle(
-          Offset(size.width / 2, size.height * 0.85), 1.5,
-          p..style = PaintingStyle.fill);
-    } else {
-      // Cash / bill silhouette
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTWH(
-                  0, size.height * 0.2, size.width, size.height * 0.6),
-              const Radius.circular(2)),
-          p..style = PaintingStyle.stroke);
-      canvas.drawCircle(
-          Offset(size.width / 2, size.height / 2), size.width * 0.18,
-          p..style = PaintingStyle.stroke);
-    }
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter _) => false;
-}
+// ─── (Custom painters for the old card/empty-state were removed in the ───────
+//     My Orders redesign — Material icons now handle the visuals.)

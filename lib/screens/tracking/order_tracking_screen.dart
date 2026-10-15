@@ -97,7 +97,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   // ─── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context, OrderTrackingProvider tracking) {
     return Container(
-      color: AppColors.primaryDark,
+      decoration: const BoxDecoration(
+        color: AppColors.primaryDark,
+        borderRadius:
+            BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+      ),
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
       child: Row(
@@ -263,7 +267,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
         CustomPaint(
             size: const Size(12, 12), painter: _LanternDotPainter()),
         const SizedBox(width: 6),
-        Text(label, style: AppTextStyles.label(context)),
+        Text(
+          label.toUpperCase(),
+          style: AppTextStyles.label(context).copyWith(
+            fontSize: 12,
+            letterSpacing: 1.1,
+          ),
+        ),
       ],
     );
   }
@@ -274,7 +284,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SkeletonBox(height: 88, radius: AppRadius.lg),
+          _SkeletonBox(height: 132, radius: AppRadius.lg),
           const SizedBox(height: AppSpacing.lg),
           _SkeletonBox(height: 320, radius: AppRadius.lg),
           const SizedBox(height: AppSpacing.lg),
@@ -387,6 +397,7 @@ class _StatusHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCancelled = order.status == OrderStatus.cancelled;
     final isCompleted = order.status == OrderStatus.completed;
+    final isFinal     = isCancelled || isCompleted;
 
     final Color statusColor = isCancelled
         ? AppColors.error
@@ -394,126 +405,195 @@ class _StatusHeroCard extends StatelessWidget {
         ? AppColors.success
         : AppColors.gold;
 
+    final lastUpdate = order.updatedAt ?? order.createdAt;
+
     return Container(
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg, vertical: AppSpacing.md + 2),
       decoration: BoxDecoration(
-        color: AppColors.primaryDark,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primaryDark, AppColors.primary],
+        ),
         borderRadius: BorderRadius.circular(AppRadius.xl),
         boxShadow: AppShadows.goldGlow,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Animated status icon ──────────────────────────────────────────
-          SizedBox(
-            width: 64,
-            height: 64,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Pulse ring — only for active (not final) states
-                if (!isCancelled && !isCompleted)
-                  AnimatedBuilder(
-                    animation: pulse,
-                    builder: (_, __) => Container(
-                      width: 64,
-                      height: 64,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // ── Animated status icon ────────────────────────────────────
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Pulse ring — only for active (not final) states
+                    if (!isFinal)
+                      AnimatedBuilder(
+                        animation: pulse,
+                        builder: (_, __) => Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.gold
+                                .withOpacity(pulse.value * 0.15),
+                          ),
+                        ),
+                      ),
+                    Container(
+                      width: 52,
+                      height: 52,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: AppColors.gold
-                            .withOpacity(pulse.value * 0.15),
+                        color: isCancelled
+                            ? AppColors.error.withOpacity(0.15)
+                            : isCompleted
+                            ? AppColors.success.withOpacity(0.12)
+                            : AppColors.gold.withOpacity(0.16),
+                        border: Border.all(color: statusColor, width: 2),
+                      ),
+                      child: Center(
+                        child: _HeroStatusIcon(
+                          status: order.status,
+                          steam: steam,
+                          color: statusColor,
+                        ),
                       ),
                     ),
-                  ),
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isCancelled
-                        ? AppColors.error.withOpacity(0.15)
-                        : isCompleted
-                        ? AppColors.success.withOpacity(0.12)
-                        : AppColors.gold.withOpacity(0.16),
-                    border: Border.all(color: statusColor, width: 2),
-                  ),
-                  child: Center(
-                    child: _HeroStatusIcon(
-                      status: order.status,
-                      steam: steam,
-                      color: statusColor,
-                    ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+
+              const SizedBox(width: AppSpacing.md),
+
+              // ── Text block ──────────────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Micro label
+                    Text(
+                      'Current status',
+                      style: GoogleFonts.karla(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textOnDark.withOpacity(0.4),
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      order.status.label,
+                      style: GoogleFonts.playfairDisplaySc(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: statusColor,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      order.status.description,
+                      style: GoogleFonts.karla(
+                        fontSize: 12,
+                        color: AppColors.textOnDark.withOpacity(0.6),
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.gold.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                        border: Border.all(
+                            color: AppColors.gold.withOpacity(0.35), width: 1),
+                      ),
+                      child: Text(
+                        order.orderNumber,
+                        style: GoogleFonts.karla(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.gold,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
 
-          const SizedBox(width: AppSpacing.md),
+          const SizedBox(height: AppSpacing.sm + 2),
+          Divider(color: AppColors.textOnDark.withOpacity(0.12), height: 1),
+          const SizedBox(height: AppSpacing.sm + 2),
 
-          // ── Text block ────────────────────────────────────────────────────
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Micro label
-                Text(
-                  'Current status',
-                  style: GoogleFonts.karla(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textOnDark.withOpacity(0.4),
-                    letterSpacing: 0.6,
+          // ── Footer: last updated + live indicator ─────────────────────────
+          Row(
+            children: [
+              Icon(Icons.schedule_rounded,
+                  size: 13, color: AppColors.textOnDark.withOpacity(0.5)),
+              const SizedBox(width: 5),
+              Text(
+                'Updated ${_timeAgo(lastUpdate)}',
+                style: GoogleFonts.karla(
+                  fontSize: 11,
+                  color: AppColors.textOnDark.withOpacity(0.55),
+                ),
+              ),
+              const Spacer(),
+              if (!isFinal)
+                AnimatedBuilder(
+                  animation: pulse,
+                  builder: (_, __) => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.gold
+                              .withOpacity(0.4 + 0.6 * pulse.value),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Live updates',
+                        style: GoogleFonts.karla(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  order.status.label,
-                  style: GoogleFonts.playfairDisplaySc(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: statusColor,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  order.status.description,
-                  style: GoogleFonts.karla(
-                    fontSize: 12,
-                    color: AppColors.textOnDark.withOpacity(0.6),
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                    border: Border.all(
-                        color: AppColors.gold.withOpacity(0.35), width: 1),
-                  ),
-                  child: Text(
-                    order.orderNumber,
-                    style: GoogleFonts.karla(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gold,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         ],
       ),
     );
   }
+}
+
+// ─── Relative time helper ───────────────────────────────────────────────────────
+String _timeAgo(DateTime dt) {
+  final diff = DateTime.now().difference(dt);
+  if (diff.inSeconds < 60) return 'just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
+  return '${dt.month}/${dt.day}';
 }
 
 // ─── Hero status icon — changes per order status ───────────────────────────────
@@ -1156,9 +1236,38 @@ class _DeliveryInfoCard extends StatelessWidget {
                 ],
                 if (delivery.riderContact != null) ...[
                   const SizedBox(height: 2),
-                  Text(delivery.riderContact!,
-                      style: AppTextStyles.bodyMedium(context)
-                          .copyWith(color: AppColors.gold)),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(
+                          ClipboardData(text: delivery.riderContact!));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: const [
+                              Icon(Icons.check_circle_rounded,
+                                  color: AppColors.gold, size: 18),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text('Contact number copied'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(delivery.riderContact!,
+                            style: AppTextStyles.bodyMedium(context).copyWith(
+                                color: AppColors.gold,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(width: 5),
+                        const Icon(Icons.copy_rounded,
+                            size: 13, color: AppColors.gold),
+                      ],
+                    ),
+                  ),
                 ],
                 if (delivery.lalamoveBookingId != null) ...[
                   const SizedBox(height: 2),
@@ -1192,19 +1301,29 @@ class _OrderItemsCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ...order.items.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${item.quantity}×',
-                  style: GoogleFonts.karla(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.gold,
+                Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    '${item.quantity}×',
+                    style: GoogleFonts.karla(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gold,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: AppSpacing.sm + 2),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1216,13 +1335,17 @@ class _OrderItemsCard extends StatelessWidget {
                               color: AppColors.textPrimary,
                               fontSize: 13)),
                       if (item.note != null && item.note!.isNotEmpty)
-                        Text('Note: ${item.note}',
-                            style: AppTextStyles.caption(context).copyWith(
-                                color: AppColors.textMuted,
-                                fontStyle: FontStyle.italic)),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text('Note: ${item.note}',
+                              style: AppTextStyles.caption(context).copyWith(
+                                  color: AppColors.textMuted,
+                                  fontStyle: FontStyle.italic)),
+                        ),
                     ],
                   ),
                 ),
+                const SizedBox(width: AppSpacing.sm),
                 Text(
                   '₱${item.subtotal.toStringAsFixed(2)}',
                   style: GoogleFonts.karla(

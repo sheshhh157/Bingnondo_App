@@ -81,7 +81,8 @@ class _CheckoutScreenState extends State<CheckoutScreen>
               opacity: _fade,
               child: Column(
                 children: [
-                  _buildTopBar(context, cart),
+                  if (cart.step != CheckoutStep.confirmation)
+                    _buildTopBar(context, cart),
                   Expanded(child: _buildBody(context, cart)),
                 ],
               ),
@@ -94,8 +95,6 @@ class _CheckoutScreenState extends State<CheckoutScreen>
 
   // ─── Top bar (header + step indicator) ─────────────────────────────────────
   Widget _buildTopBar(BuildContext context, CartProvider cart) {
-    final isConfirmation = cart.step == CheckoutStep.confirmation;
-
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.primaryDark,
@@ -107,43 +106,37 @@ class _CheckoutScreenState extends State<CheckoutScreen>
       child: Column(
         children: [
           Row(children: [
-            if (!isConfirmation)
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-                color: AppColors.textOnDark,
-                onPressed: () => Navigator.pop(context),
-              )
-            else
-              const SizedBox(width: 48),
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+              color: AppColors.textOnDark,
+              onPressed: () => Navigator.pop(context),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isConfirmation ? 'Order Placed!' : 'Checkout',
+                    'Checkout',
                     style: GoogleFonts.playfairDisplaySc(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textOnDark,
                     ),
                   ),
-                  if (!isConfirmation)
-                    Text(
-                      'Review your order and confirm',
-                      style: GoogleFonts.karla(
-                        fontSize: 12,
-                        color: AppColors.textOnDark.withOpacity(0.7),
-                      ),
+                  Text(
+                    'Review your order and confirm',
+                    style: GoogleFonts.karla(
+                      fontSize: 12,
+                      color: AppColors.textOnDark.withOpacity(0.7),
                     ),
+                  ),
                 ],
               ),
             ),
-            if (!isConfirmation) const SizedBox(width: 48),
+            const SizedBox(width: 48),
           ]),
-          if (!isConfirmation) ...[
-            const SizedBox(height: AppSpacing.md),
-            _buildStepIndicator(cart),
-          ],
+          const SizedBox(height: AppSpacing.md),
+          _buildStepIndicator(cart),
         ],
       ),
     );
@@ -792,22 +785,29 @@ class _ConfirmationStep extends StatelessWidget {
       child: Column(children: [
         const SizedBox(height: AppSpacing.lg),
 
-        // Lanterns
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CustomPaint(
-                size:    const Size(40, 56),
-                painter: _ConfirmLantern(tilt: -0.15)),
-            const SizedBox(width: 12),
-            CustomPaint(
-                size:    const Size(52, 72),
-                painter: _ConfirmLantern(tilt: 0)),
-            const SizedBox(width: 12),
-            CustomPaint(
-                size:    const Size(40, 56),
-                painter: _ConfirmLantern(tilt: 0.15)),
-          ],
+        // ── Success badge ────────────────────────────────────────────────
+        Container(
+          width: 104,
+          height: 104,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.gold.withOpacity(0.12),
+            border: Border.all(
+                color: AppColors.gold.withOpacity(0.3), width: 1.5),
+          ),
+          child: Center(
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.gold,
+                boxShadow: AppShadows.goldGlow,
+              ),
+              child: const Icon(Icons.check_rounded,
+                  color: AppColors.primaryDark, size: 40),
+            ),
+          ),
         ),
 
         const SizedBox(height: AppSpacing.xl),
@@ -826,7 +826,7 @@ class _ConfirmationStep extends StatelessWidget {
 
         const SizedBox(height: AppSpacing.xl),
 
-        // Order number card
+        // ── Order summary card ───────────────────────────────────────────
         if (order != null) ...[
           Container(
             width:      double.infinity,
@@ -857,14 +857,30 @@ class _ConfirmationStep extends StatelessWidget {
               const ChineseDivider(),
               const SizedBox(height: AppSpacing.md),
               _ConfirmRow(
-                label: 'Total',
-                value: '₱${order.totalAmount.toStringAsFixed(2)}',
-                emphasize: true,
+                label: 'Items',
+                value: '${cart.totalItemCount} '
+                    '${cart.totalItemCount == 1 ? 'item' : 'items'}',
               ),
               const SizedBox(height: AppSpacing.sm),
               _ConfirmRow(
                 label: 'Payment',
                 value: isGcash ? 'GCash' : 'Cash on Delivery',
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(
+                      color: AppColors.primary.withOpacity(0.12)),
+                ),
+                child: _ConfirmRow(
+                  label: 'Total',
+                  value: '₱${order.totalAmount.toStringAsFixed(2)}',
+                  emphasize: true,
+                ),
               ),
               const SizedBox(height: AppSpacing.md),
               const ChineseDivider(),
@@ -882,8 +898,15 @@ class _ConfirmationStep extends StatelessWidget {
                 border:       Border.all(color: AppColors.border),
               ),
               child: Row(children: [
-                const Icon(Icons.receipt_long_rounded,
-                    color: AppColors.gold, size: 18),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.receipt_long_rounded,
+                      color: AppColors.gold, size: 16),
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: cart.gcashExtractResult!.refFound
@@ -1358,59 +1381,4 @@ class _OrderSummaryCard extends StatelessWidget {
       ),
     );
   }
-}
-
-// ─── Confirmation Lantern painter ─────────────────────────────────────────────
-class _ConfirmLantern extends CustomPainter {
-  final double tilt;
-  const _ConfirmLantern({required this.tilt});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.translate(size.width / 2, size.height / 2);
-    canvas.rotate(tilt);
-    canvas.translate(-size.width / 2, -size.height / 2);
-
-    final gFill  = Paint()..color = AppColors.gold..style = PaintingStyle.fill;
-    final mFill  = Paint()
-      ..color = AppColors.primaryDark..style = PaintingStyle.fill;
-    final stroke = Paint()
-      ..color       = AppColors.gold
-      ..style       = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawLine(Offset(w / 2, 0), Offset(w / 2, h * 0.08), stroke);
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(w * 0.15, h * 0.06, w * 0.7, h * 0.08),
-            const Radius.circular(2)),
-        gFill);
-    final body = Path()
-      ..moveTo(w * 0.05, h * 0.16)
-      ..quadraticBezierTo(0, h * 0.5, w * 0.05, h * 0.76)
-      ..lineTo(w * 0.95, h * 0.76)
-      ..quadraticBezierTo(w, h * 0.5, w * 0.95, h * 0.16)
-      ..close();
-    canvas.drawPath(body, mFill);
-    canvas.drawPath(body, stroke);
-    canvas.drawCircle(Offset(w / 2, h * 0.46), w * 0.08,
-        Paint()..color = AppColors.goldLight.withOpacity(0.4));
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(w * 0.15, h * 0.74, w * 0.7, h * 0.08),
-            const Radius.circular(2)),
-        gFill);
-    for (int i = 0; i < 4; i++) {
-      final x = w * 0.22 + i * w * 0.19;
-      canvas.drawLine(Offset(x, h * 0.82),
-          Offset(x + (i.isOdd ? 3 : -3), h), stroke..strokeWidth = 1);
-    }
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
