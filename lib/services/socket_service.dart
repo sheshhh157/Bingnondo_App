@@ -1,53 +1,7 @@
-// socket_service_patch.dart  —  §1.6 patch for lib/services/socket_service.dart
-// ─────────────────────────────────────────────────────────────────────────────
-// Two small additions needed by OrderTrackingProvider.
-// Apply both changes to lib/services/socket_service.dart.
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// ① In the ROOMS section, add leaveOrderRoom() right after joinOrderRoom():
-//
-//   /// Call when leaving the order tracking screen (Provider.dispose).
-//   void leaveOrderRoom(int orderId) {
-//     _socket?.emit('leave_order', {'order_id': orderId});
-//   }
-//
-// ② Replace the single-callback onOrderStatusUpdate field + its _socket!.on
-//   handler with a multi-listener version so multiple providers can listen
-//   without clobbering each other's callbacks.
-//
-//   REMOVE these two lines from the field declarations:
-//     OrderStatusCallback?    onOrderStatusUpdate;
-//
-//   ADD this field instead:
-//     final List<OrderStatusCallback> _orderStatusListeners = [];
-//
-//   ADD these two methods to the public API (below joinOrderRoom):
-//
-//     /// Register a listener for order_status_update events.
-//     /// Returns a VoidCallback that unregisters it — call it in dispose().
-//     VoidCallback onOrderStatusUpdate(OrderStatusCallback cb) {
-//       _orderStatusListeners.add(cb);
-//       return () => _orderStatusListeners.remove(cb);
-//     }
-//
-//   REPLACE the _socket!.on handler in connect():
-//     _socket!.on('order_status_update', (data) {
-//       try {
-//         for (final cb in List.of(_orderStatusListeners)) {
-//           cb(data as Map<String, dynamic>);
-//         }
-//       } catch (e) {
-//         debugPrint('[Socket] order_status_update error: $e');
-//       }
-//     });
-//
-// ─────────────────────────────────────────────────────────────────────────────
-// FULL UPDATED socket_service.dart (copy this file over the existing one)
-// ─────────────────────────────────────────────────────────────────────────────
-
 // lib/services/socket_service.dart
 // §1.6 UPDATE — added leaveOrderRoom + multi-listener onOrderStatusUpdate
-// §1.7 UPDATE — added join_support / support_message / support_chat_status / new_notification
+// §1.7 UPDATE — added join_support / support_message / support_chat_status
+// §1.8 UPDATE — added joinCustomerRoom + new_notification listener
 
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
@@ -73,7 +27,7 @@ class SocketService {
   MenuUpdateCallback?     onMenuUpdate;
   SupportMessageCallback? onSupportMessage;    // §1.7
   SupportStatusCallback?  onSupportChatStatus; // §1.7 — lock/unlock events
-  NotificationCallback?   onNewNotification;
+  NotificationCallback?   onNewNotification;   // §1.8
 
   // §1.6 — multi-listener list so multiple providers can subscribe simultaneously
   final List<OrderStatusCallback> _orderStatusListeners = [];
@@ -134,7 +88,7 @@ class SocketService {
       }
     });
 
-    // Real-time new notification event
+    // §1.8 — real-time new notification push
     _socket!.on('new_notification', (data) {
       try {
         onNewNotification?.call(data as Map<String, dynamic>);
@@ -143,6 +97,7 @@ class SocketService {
       }
     });
 
+    // fallback alias (some backends emit 'notification')
     _socket!.on('notification', (data) {
       try {
         onNewNotification?.call(data as Map<String, dynamic>);
@@ -159,34 +114,36 @@ class SocketService {
 
   // ── Rooms ───────────────────────────────────────────────────────────────────
 
-  /// Call after login — joins the customer's personal support room so they
-  /// receive real-time staff replies and lock/unlock state changes.
+  /// §1.7 — Call after login: joins the customer's personal support room so
+  /// they receive real-time staff replies and lock/unlock state changes.
   void joinSupportRoom(int customerId) {
     _socket?.emit('join_support', {'customer_id': customerId});
   }
 
-  /// Call when opening the order tracking screen.
+  /// §1.8 — Call after login: joins the customer's personal notification room
+  /// so the app receives real-time `new_notification` events for badge updates.
+  void joinCustomerRoom(int customerId) {
+    _socket?.emit('join_customer', {'customer_id': customerId});
+  }
+
+  /// §1.6 — Call when opening the order tracking screen.
   void joinOrderRoom(int orderId) {
     _socket?.emit('join_order', {'order_id': orderId});
   }
 
-  /// Call when leaving the order tracking screen (in Provider.dispose).
-  /// §1.6 NEW
+  /// §1.6 — Call when leaving the order tracking screen (in Provider.dispose).
   void leaveOrderRoom(int orderId) {
     _socket?.emit('leave_order', {'order_id': orderId});
   }
 
   // ── Listeners ───────────────────────────────────────────────────────────────
 
-  /// Register a callback for order_status_update events.
+  /// §1.6 — Register a callback for order_status_update events.
   /// Returns a VoidCallback — call it in your provider's dispose() to unsubscribe.
-  ///
-  /// §1.6 NEW — replaces the single `onOrderStatusUpdate` field with a list
-  /// so OrderTrackingProvider and any other listener can coexist.
   ///
   /// Usage:
   ///   late final VoidCallback _unsub;
-  ///   _unsub = SocketService.instance.onOrderStatusUpdate((data) { ... });
+  ///   _unsub = SocketService.instance.listenOrderStatus((data) { ... });
   ///   // in dispose:
   ///   _unsub();
   VoidCallback listenOrderStatus(OrderStatusCallback cb) {

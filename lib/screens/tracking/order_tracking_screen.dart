@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../models/tracking_models.dart';
 import '../../services/order_tracking_provider.dart';
+import '../../services/socket_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
 import '../chat/support_chat_screen.dart';
@@ -55,12 +56,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     _steam = CurvedAnimation(parent: _steamCtrl, curve: Curves.easeInOut);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Join the per-order room so live `order_status_update` events reach the
+      // stepper instantly instead of waiting for the 15 s poll fallback.
+      SocketService.instance.joinOrderRoom(widget.orderId);
       context.read<OrderTrackingProvider>().loadOrder(widget.orderId);
     });
   }
 
   @override
   void dispose() {
+    SocketService.instance.leaveOrderRoom(widget.orderId);
     _fadeCtrl.dispose();
     _pulseCtrl.dispose();
     _steamCtrl.dispose();

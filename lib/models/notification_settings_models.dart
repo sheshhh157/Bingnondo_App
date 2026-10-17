@@ -17,14 +17,25 @@ extension NotificationTypeX on NotificationType {
   static NotificationType fromString(String v) {
     switch (v) {
       case 'order_confirmed':        return NotificationType.orderConfirmed;
+      case 'order_pending':          return NotificationType.orderConfirmed;
+      case 'pending':                return NotificationType.orderConfirmed;
       case 'order_preparing':        return NotificationType.orderPreparing;
       case 'order_ready':            return NotificationType.orderReady;
       case 'order_out_for_delivery': return NotificationType.orderOutForDelivery;
+      case 'out_for_delivery':       return NotificationType.orderOutForDelivery;
       case 'order_completed':        return NotificationType.orderCompleted;
+      case 'completed':              return NotificationType.orderCompleted;
       case 'order_cancelled':        return NotificationType.orderCancelled;
+      case 'cancelled':              return NotificationType.orderCancelled;
       case 'payment_received':       return NotificationType.paymentReceived;
+      case 'payment_verified':       return NotificationType.paymentReceived;
+      case 'approved':               return NotificationType.paymentReceived;
       case 'payment_failed':         return NotificationType.paymentFailed;
+      case 'rejected':               return NotificationType.paymentFailed;
+      case 'payment_rejected':       return NotificationType.paymentFailed;
       case 'support_message':        return NotificationType.supportMessage;
+      case 'order_status':           return NotificationType.orderConfirmed; // fallback
+      case 'payment_status':         return NotificationType.paymentReceived;
       default:                       return NotificationType.system;
     }
   }
@@ -94,14 +105,53 @@ class AppNotification {
   });
 
   factory AppNotification.fromJson(Map<String, dynamic> json) {
+    final int? relatedId = json['related_order_id'] as int? ??
+        json['reference_id'] as int? ??
+        json['order_id'] as int? ??
+        (json['relatedOrderId'] as int?);
+    final String? relatedNum = json['related_order_number'] as String? ??
+        json['order_number'] as String? ??
+        (json['relatedOrderNumber'] as String?);
+    String typeStr = json['type'] as String? ?? json['event'] as String? ?? 'system';
+    if (typeStr == 'order_status_update' || typeStr == 'order_status') {
+      final status = (json['status'] as String?)?.toLowerCase();
+      if (status != null) {
+        switch (status) {
+          case 'confirmed':
+            typeStr = 'order_confirmed';
+            break;
+          case 'preparing':
+            typeStr = 'order_preparing';
+            break;
+          case 'ready':
+            typeStr = 'order_ready';
+            break;
+          case 'out_for_delivery':
+            typeStr = 'order_out_for_delivery';
+            break;
+          case 'completed':
+            typeStr = 'order_completed';
+            break;
+          case 'cancelled':
+            typeStr = 'order_cancelled';
+            break;
+          default:
+            break;
+        }
+      }
+    } else if (typeStr == 'payment:verified' || typeStr == 'payment_verified') {
+      typeStr = 'payment_received';
+    } else if (typeStr == 'payment:rejected' || typeStr == 'payment_rejected') {
+      typeStr = 'payment_failed';
+    }
     return AppNotification(
       id: json['id'] as int,
-      type: NotificationTypeX.fromString(json['type'] as String),
-      message: json['message'] as String,
+      type: NotificationTypeX.fromString(typeStr),
+      message: json['message'] as String? ?? '',
       isRead: json['is_read'] as bool? ?? false,
-      relatedOrderId: json['related_order_id'] as int?,
-      relatedOrderNumber: json['related_order_number'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      relatedOrderId: relatedId,
+      relatedOrderNumber: relatedNum,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
     );
   }
 }
@@ -115,6 +165,8 @@ class AccountProfile {
   final String? lastName;
   final String? mobileNumber;
   final String? address;
+  final double? latitude;
+  final double? longitude;
   final bool profileCompleted;
   final bool hasSavedPayment;
   final String? savedPaymentLast4;
@@ -127,6 +179,8 @@ class AccountProfile {
     this.lastName,
     this.mobileNumber,
     this.address,
+    this.latitude,
+    this.longitude,
     this.profileCompleted = false,
     this.hasSavedPayment = false,
     this.savedPaymentLast4,
@@ -134,6 +188,8 @@ class AccountProfile {
   });
 
   factory AccountProfile.fromJson(Map<String, dynamic> json) {
+    final lat = json['latitude'];
+    final lng = json['longitude'];
     return AccountProfile(
       id: json['id'] as int,
       email: json['email'] as String,
@@ -141,6 +197,8 @@ class AccountProfile {
       lastName: json['last_name'] as String?,
       mobileNumber: json['mobile_number'] as String?,
       address: json['address'] as String?,
+      latitude: lat is num ? lat.toDouble() : null,
+      longitude: lng is num ? lng.toDouble() : null,
       profileCompleted: json['profile_completed'] as bool? ?? false,
       hasSavedPayment: json['has_saved_payment'] as bool? ?? false,
       savedPaymentLast4: json['saved_payment_last4'] as String?,
@@ -183,12 +241,16 @@ class UpdateProfileRequest {
   final String lastName;
   final String? mobileNumber;
   final String? address;
+  final double? latitude;
+  final double? longitude;
 
   const UpdateProfileRequest({
     required this.firstName,
     required this.lastName,
     this.mobileNumber,
     this.address,
+    this.latitude,
+    this.longitude,
   });
 
   Map<String, dynamic> toJson() => {
@@ -196,5 +258,7 @@ class UpdateProfileRequest {
     'last_name': lastName,
     if (mobileNumber != null) 'mobile_number': mobileNumber,
     if (address != null) 'address': address,
+    if (latitude != null) 'latitude': latitude,
+    if (longitude != null) 'longitude': longitude,
   };
 }

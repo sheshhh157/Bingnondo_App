@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api_service.dart';
 import '../mock/mock_data.dart';
+import '../services/socket_service.dart'; // §1.7 + §1.8
 
 enum AuthStatus {
   initial,
@@ -92,6 +93,12 @@ class AuthProvider extends ChangeNotifier {
     _status = AuthStatus.authenticated;
 
     notifyListeners();
+
+    // §1.7 + §1.8 — join socket rooms after login
+    final socket = SocketService.instance;
+    socket.connect();
+    socket.joinSupportRoom(_user!.id);
+    socket.joinCustomerRoom(_user!.id);
   }
 
   // ─── Sign Up ─────────────────────────────────────────────────────────────
@@ -414,6 +421,9 @@ class AuthProvider extends ChangeNotifier {
       await _api.clearTokens();
     }
 
+    // §1.7 + §1.8 — disconnect socket on logout
+    SocketService.instance.disconnect();
+
     _user = null;
 
     _pendingEmail = null;
@@ -455,5 +465,11 @@ class AuthProvider extends ChangeNotifier {
     _status = AuthStatus.authenticated;
 
     notifyListeners();
+
+    // §1.7 + §1.8 — join socket rooms after mock login
+    final socket = SocketService.instance;
+    socket.connect();
+    socket.joinSupportRoom(_user!.id);
+    socket.joinCustomerRoom(_user!.id);
   }
 }

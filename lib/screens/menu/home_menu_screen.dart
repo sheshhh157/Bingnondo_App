@@ -208,6 +208,10 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
                     _CategoryTabBar(
                       controller: _tabController,
                       categories: menuProvider.categories,
+                      itemCounts: {
+                        for (final c in menuProvider.categories)
+                          c.id: menuProvider.itemsForCategory(c.id).length,
+                      },
                     ),
                   Expanded(child: _buildBody(context, menuProvider)),
                 ],
@@ -384,18 +388,20 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
             _ShimmerBox(width: 120, height: 14),
           ]),
         ),
-        // 2-column grid
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          child: GridView.count(
-            shrinkWrap: true,
+        // Horizontal row of item cards
+        SizedBox(
+          height: _kCategoryCardH,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            crossAxisSpacing: AppSpacing.sm + 2,
-            mainAxisSpacing: AppSpacing.sm + 2,
-            childAspectRatio: 0.72,
-            children: List.generate(
-                4, (_) => const _ShimmerBox(radius: AppRadius.lg)),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            itemCount: 3,
+            separatorBuilder: (_, __) =>
+                const SizedBox(width: AppSpacing.sm + 2),
+            itemBuilder: (_, __) => const SizedBox(
+              width: _kCategoryCardW,
+              child: _ShimmerBox(radius: AppRadius.lg),
+            ),
           ),
         ),
       ],
@@ -875,8 +881,13 @@ class _OpenNowPill extends StatelessWidget {
 class _CategoryTabBar extends StatelessWidget {
   final TabController controller;
   final List<MenuCategory> categories;
-  const _CategoryTabBar(
-      {required this.controller, required this.categories});
+  final Map<int, int> itemCounts; // categoryId → item count (badge)
+
+  const _CategoryTabBar({
+    required this.controller,
+    required this.categories,
+    required this.itemCounts,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -885,7 +896,7 @@ class _CategoryTabBar extends StatelessWidget {
 
     return Container(
       color: AppColors.primaryDark,
-      padding: const EdgeInsets.fromLTRB(0, 6, 0, 10),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 12),
       child: TabBar(
         controller: controller,
         isScrollable: true,
@@ -895,8 +906,9 @@ class _CategoryTabBar extends StatelessWidget {
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         tabs: List.generate(labels.length, (i) {
+          final isAll = i == 0;
           // IMPORTANT: must be Tab() so TabBar's internal InkWell handles the tap.
           // _CategoryChip is purely cosmetic — the chip is the Tab's child.
           return Tab(
@@ -904,6 +916,8 @@ class _CategoryTabBar extends StatelessWidget {
               label: labels[i],
               controller: controller,
               index: i,
+              // "All" shows no badge — only real categories do.
+              count: isAll ? null : itemCounts[categories[i - 1].id],
             ),
           );
         }),
@@ -913,12 +927,19 @@ class _CategoryTabBar extends StatelessWidget {
 }
 
 // Animating pill chip — fills with gold when selected.
+// A small badge on the right shows how many items the category has.
 class _CategoryChip extends StatefulWidget {
   final String label;
   final TabController controller;
   final int index;
-  const _CategoryChip(
-      {required this.label, required this.controller, required this.index});
+  final int? count; // null → no badge (used by the "All" chip)
+
+  const _CategoryChip({
+    required this.label,
+    required this.controller,
+    required this.index,
+    this.count,
+  });
 
   @override
   State<_CategoryChip> createState() => _CategoryChipState();
@@ -944,31 +965,90 @@ class _CategoryChipState extends State<_CategoryChip> {
   @override
   Widget build(BuildContext context) {
     final isSelected = widget.controller.index == widget.index;
+
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
       // No padding here — Tab widget already provides the tap area and height.
       // Horizontal padding is handled by labelPadding on the TabBar.
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
         color: isSelected
             ? AppColors.gold
-            : AppColors.textOnDark.withOpacity(0.1),
+            : AppColors.textOnDark.withOpacity(0.08),
         borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(
           color: isSelected
               ? AppColors.gold
-              : AppColors.textOnDark.withOpacity(0.2),
+              : AppColors.textOnDark.withOpacity(0.18),
           width: 1,
         ),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: AppColors.gold.withOpacity(0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : const [],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            widget.label,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.karla(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: isSelected
+                  ? AppColors.primaryDark
+                  : AppColors.textOnDark.withOpacity(0.7),
+              letterSpacing: 0.2,
+            ),
+          ),
+          if (widget.count != null) ...[
+            const SizedBox(width: 6),
+            _CategoryCountBadge(
+              count: widget.count!,
+              isSelected: isSelected,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// Small pill badge showing the number of items in the category.
+class _CategoryCountBadge extends StatelessWidget {
+  final int count;
+  final bool isSelected;
+
+  const _CategoryCountBadge({required this.count, required this.isSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      constraints: const BoxConstraints(minWidth: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? AppColors.primaryDark.withOpacity(0.9)
+            : AppColors.gold.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
-        widget.label,
+        '$count',
+        textAlign: TextAlign.center,
         style: GoogleFonts.karla(
-          fontSize: 12,
-          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-          color: isSelected ? AppColors.primaryDark : AppColors.textOnDark.withOpacity(0.65),
-          letterSpacing: 0.2,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          height: 1.1,
+          color: isSelected ? AppColors.gold : AppColors.primaryDark,
         ),
       ),
     );
@@ -1890,7 +1970,11 @@ class _ProfileSheet extends StatelessWidget {
       ),
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.xxl),
-      child: Column(
+      // Material gives the ListTiles below a Material ancestor to paint their
+      // ink splash on (the colored Container alone hides those effects).
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Center(
@@ -1946,6 +2030,7 @@ class _ProfileSheet extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           GoldOutlineButton(label: 'SIGN OUT', onPressed: onLogout),
         ],
+        ),
       ),
     );
   }
@@ -2252,6 +2337,11 @@ class _MiniFabCatPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
 }
+// Fixed card size for the horizontal item rows in the ALL tab.
+// Same proportions as the old 2-column grid (0.72 aspect ratio).
+const double _kCategoryCardW = 160;
+const double _kCategoryCardH = 222;
+
 // ─── Category Section (used in ALL tab) ───────────────────────────────────────
 // One section = category header + horizontal scroll row of item cards.
 class _CategorySection extends StatelessWidget {
@@ -2351,7 +2441,7 @@ class _CategorySection extends StatelessWidget {
           ),
         ),
 
-        // ── Vertical 2-column grid ──────────────────────────────────────────
+        // ── Horizontal scroll row of item cards ─────────────────────────────
         if (items.isEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(
@@ -2362,22 +2452,23 @@ class _CategorySection extends StatelessWidget {
             ),
           )
         else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(
-                AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: AppSpacing.sm + 2,
-              mainAxisSpacing: AppSpacing.sm + 2,
-              childAspectRatio: 0.72,
-            ),
-            itemCount: items.length,
-            itemBuilder: (ctx, i) => MenuItemGridCard(
-              item: items[i],
-              onTap: () => onItemTap(items[i]),
-              onAdd: () => onAddToCart(items[i]),
+          SizedBox(
+            height: _kCategoryCardH,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm),
+              itemCount: items.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(width: AppSpacing.sm + 2),
+              itemBuilder: (ctx, i) => SizedBox(
+                width: _kCategoryCardW,
+                child: MenuItemGridCard(
+                  item: items[i],
+                  onTap: () => onItemTap(items[i]),
+                  onAdd: () => onAddToCart(items[i]),
+                ),
+              ),
             ),
           ),
       ],

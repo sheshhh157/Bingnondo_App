@@ -95,13 +95,15 @@ class CartService {
   }
 
   // ─── PUT /api/customer/profile ─────────────────────────────────────────────
-  // Saves first_name, last_name, mobile_number, address.
+  // Saves first_name, last_name, mobile_number, address (+ optional lat/lng pin).
   // Used by CompleteProfileScreen (§1.1b) and AccountSettingsScreen (§1.9).
   Future<CustomerProfile> updateProfile({
     required String firstName,
     required String lastName,
     required String mobileNumber,
     required String address,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       final headers  = await _authHeaders();
@@ -114,6 +116,8 @@ class CartService {
           'last_name':     lastName.trim(),
           'mobile_number': mobileNumber.trim(),
           'address':       address.trim(),
+          if (latitude  != null) 'latitude':  latitude,
+          if (longitude != null) 'longitude': longitude,
         }),
       )
           .timeout(_timeout);

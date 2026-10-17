@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/cart_models.dart';
+import '../models/geo_models.dart';
 import '../models/menu_models.dart';
 import '../mock/mock_data.dart';
 import 'cart_service.dart';
@@ -31,6 +32,11 @@ class CartProvider extends ChangeNotifier {
   String?             _errorMessage;
   bool                _isLoading     = false;
 
+  // Delivery pin for this order. Defaults to the saved profile address and can
+  // be changed on the checkout page (pin-drop picker).
+  PickedAddress? _deliveryAddress;
+  bool           _saveAddressToProfile = false;
+
   // GCash receipt extract result — set after extract-receipt, cleared on place/reset
   GcashExtractResult? _gcashExtractResult;
 
@@ -42,6 +48,8 @@ class CartProvider extends ChangeNotifier {
   String?             get errorMessage       => _errorMessage;
   bool                get isLoading          => _isLoading;
   GcashExtractResult? get gcashExtractResult => _gcashExtractResult;
+  PickedAddress?      get deliveryAddress    => _deliveryAddress;
+  bool                get saveAddressToProfile => _saveAddressToProfile;
 
   /// True when GCash payment is ready to place:
   /// receipt uploaded and ref extracted (or ref is null but user chose to proceed anyway)
@@ -134,6 +142,8 @@ class CartProvider extends ChangeNotifier {
     _step               = CheckoutStep.cart;
     _lastOrder          = null;
     _gcashExtractResult = null;
+    _deliveryAddress      = null;
+    _saveAddressToProfile = false;
     _clearError();
     notifyListeners();
   }
@@ -156,6 +166,19 @@ class CartProvider extends ChangeNotifier {
 
   void clearGcashReceipt() {
     _gcashExtractResult = null;
+    notifyListeners();
+  }
+
+  /// Set / change the delivery pin for this order (checkout page).
+  void setDeliveryAddress(PickedAddress address) {
+    _deliveryAddress = address;
+    _clearError();
+    notifyListeners();
+  }
+
+  /// Whether to also persist the chosen pin as the customer's default address.
+  void setSaveAddressToProfile(bool value) {
+    _saveAddressToProfile = value;
     notifyListeners();
   }
 
@@ -208,6 +231,18 @@ class CartProvider extends ChangeNotifier {
         _paymentMethod = PaymentMethod.gcash;
       }
 
+      // Seed the delivery pin from the saved profile address (unless the
+      // customer already chose one at checkout).
+      if (_deliveryAddress == null &&
+          _profile!.address != null &&
+          _profile!.address!.trim().isNotEmpty) {
+        _deliveryAddress = PickedAddress(
+          address:   _profile!.address!,
+          latitude:  _profile!.latitude,
+          longitude: _profile!.longitude,
+        );
+      }
+
       _isLoading = false;
       notifyListeners();
       return true;
@@ -234,7 +269,31 @@ class CartProvider extends ChangeNotifier {
         orderNotes:          _orderNotes,
         gcashReceiptTempUrl: _gcashExtractResult?.tempUrl,
         gcashRefNumber:      _gcashExtractResult?.gcashRefNumber,
+        deliveryAddress:     _deliveryAddress?.address,
+        deliveryLatitude:    _deliveryAddress?.latitude,
+        deliveryLongitude:   _deliveryAddress?.longitude,
       );
+
+      // Persist the new pin as the default address, if the customer asked for it.
+      // Best-effort: a failure here must not block placing the order.
+      if (_saveAddressToProfile &&
+          _deliveryAddress != null &&
+          !_deliveryAddress!.isEmpty &&
+          _profile != null) {
+        try {
+          final updated = await CartService.instance.updateProfile(
+            firstName:    _profile!.firstName ?? '',
+            lastName:     _profile!.lastName ?? '',
+            mobileNumber: _profile!.mobileNumber ?? '',
+            address:      _deliveryAddress!.address,
+            latitude:     _deliveryAddress!.latitude,
+            longitude:    _deliveryAddress!.longitude,
+          );
+          _profile = updated;
+        } catch (_) {
+          // ignore — order still carries the pin snapshot
+        }
+      }
 
       PlaceOrderResponse response;
 

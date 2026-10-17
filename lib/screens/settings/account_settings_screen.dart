@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../../models/geo_models.dart';
 import '../../models/notification_settings_models.dart';
 import '../../services/account_settings_provider.dart';
 import '../../services/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import '../../widgets/address_picker_field.dart';
 
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
@@ -710,7 +712,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
   late final TextEditingController _firstNameCtrl;
   late final TextEditingController _lastNameCtrl;
   late final TextEditingController _mobileCtrl;
-  late final TextEditingController _addressCtrl;
+  PickedAddress? _pickedAddress;
 
   @override
   void initState() {
@@ -721,8 +723,14 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         TextEditingController(text: widget.profile.lastName ?? '');
     _mobileCtrl =
         TextEditingController(text: widget.profile.mobileNumber ?? '');
-    _addressCtrl =
-        TextEditingController(text: widget.profile.address ?? '');
+    _pickedAddress = (widget.profile.address != null &&
+            widget.profile.address!.trim().isNotEmpty)
+        ? PickedAddress(
+            address:   widget.profile.address!,
+            latitude:  widget.profile.latitude,
+            longitude: widget.profile.longitude,
+          )
+        : null;
   }
 
   @override
@@ -730,7 +738,6 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _mobileCtrl.dispose();
-    _addressCtrl.dispose();
     super.dispose();
   }
 
@@ -848,39 +855,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
 
                     const SizedBox(height: AppSpacing.md),
 
-                    // Address
-                    Text('Delivery Address',
-                        style: AppTextStyles.label(context)),
-                    const SizedBox(height: AppSpacing.sm),
-                    TextFormField(
-                      controller: _addressCtrl,
-                      maxLines: 3,
-                      style: GoogleFonts.karla(
-                          fontSize: 14, color: AppColors.textPrimary),
-                      decoration: InputDecoration(
-                        hintText:
-                        'Street, Barangay, City…',
-                        hintStyle: GoogleFonts.karla(
-                            fontSize: 13, color: AppColors.textMuted),
-                        filled: true,
-                        fillColor: AppColors.inputFill,
-                        contentPadding: const EdgeInsets.all(AppSpacing.md),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                          borderSide: const BorderSide(
-                              color: AppColors.inputBorder, width: 1.5),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                          borderSide: const BorderSide(
-                              color: AppColors.inputBorder, width: 1.5),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                          borderSide: const BorderSide(
-                              color: AppColors.gold, width: 2),
-                        ),
-                      ),
+                    // Address — pin-drop picker
+                    AddressPickerField(
+                      label:         'Delivery Address',
+                      hint:          'Tap to pin your delivery location on the map',
+                      initialValue:  _pickedAddress,
+                      onChanged:     (p) => _pickedAddress = p,
                     ),
 
                     const SizedBox(height: AppSpacing.xl),
@@ -902,11 +882,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                               .isEmpty
                               ? null
                               : _mobileCtrl.text.trim(),
-                          address: _addressCtrl.text
-                              .trim()
-                              .isEmpty
+                          address: (_pickedAddress == null ||
+                                  _pickedAddress!.isEmpty)
                               ? null
-                              : _addressCtrl.text.trim(),
+                              : _pickedAddress!.address,
+                          latitude:  _pickedAddress?.latitude,
+                          longitude: _pickedAddress?.longitude,
                         );
                         final ok = await context
                             .read<AccountSettingsProvider>()

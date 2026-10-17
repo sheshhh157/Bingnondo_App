@@ -26,7 +26,9 @@ const Map<String, dynamic> kMockProfile = {
   'first_name': 'Juan',
   'last_name': 'dela Cruz',
   'mobile_number': '+639171234567',
-  'address': '123 Ongpin St, Binondo, Manila',
+  'address': 'Poblacion, Santa Cruz, Laguna',
+  'latitude': 14.2818,
+  'longitude': 121.4149,
   'restriction_level': 'none',
 };
 
@@ -37,7 +39,9 @@ const Map<String, dynamic> kMockAccountProfile = {
   'first_name': 'Juan',
   'last_name': 'dela Cruz',
   'mobile_number': '+639171234567',
-  'address': '123 Ongpin St, Binondo, Manila',
+  'address': 'Poblacion, Santa Cruz, Laguna',
+  'latitude': 14.2818,
+  'longitude': 121.4149,
   'profile_completed': true,
   'has_saved_payment': true,
   'saved_payment_last4': '7890',

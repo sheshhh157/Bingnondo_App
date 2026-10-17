@@ -10,6 +10,20 @@ import '../../widgets/app_widgets.dart';
 import '../tracking/order_tracking_screen.dart';
 import '../chat/support_chat_screen.dart';
 
+// ─── Filter tabs (shown as gold pill chips in the maroon header) ─────────────
+enum _NotifFilter { all, orders, payments, support }
+
+// ─── Navigation helper ───────────────────────────────────────────────────────
+// Order + payment notifications both carry the order id, so both open the
+// tracker (a rejected payment should land the customer back on the order so
+// they can re-upload the receipt).
+bool _canTrack(AppNotification notif) {
+  if (notif.relatedOrderId == null) return false;
+  return notif.type.isOrderRelated ||
+      notif.type == NotificationType.paymentReceived ||
+      notif.type == NotificationType.paymentFailed;
+}
+
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -21,6 +35,8 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _fadeCtrl;
   late Animation<double> _fade;
+
+  _NotifFilter _filter = _NotifFilter.all;
 
   @override
   void initState() {
@@ -41,23 +57,38 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     super.dispose();
   }
 
+  bool _matchesFilter(AppNotification n) {
+    switch (_filter) {
+      case _NotifFilter.all:
+        return true;
+      case _NotifFilter.orders:
+        return n.type.isOrderRelated;
+      case _NotifFilter.payments:
+        return n.type == NotificationType.paymentReceived ||
+            n.type == NotificationType.paymentFailed;
+      case _NotifFilter.support:
+        return n.type == NotificationType.supportMessage;
+    }
+  }
+
   void _handleTap(BuildContext context, AppNotification notif) {
+    // Always mark as read the moment the customer opens it.
     context.read<NotificationsProvider>().markRead(notif.id);
 
-    if (notif.type.isOrderRelated && notif.relatedOrderId != null) {
-      context
-          .read<OrderTrackingProvider>()
-          .loadOrder(notif.relatedOrderId!);
+    if (_canTrack(notif)) {
+      context.read<OrderTrackingProvider>().loadOrder(notif.relatedOrderId!);
       Navigator.push(
         context,
         PageRouteBuilder(
           pageBuilder: (_, anim, __) => OrderTrackingScreen(
             orderId: notif.relatedOrderId!,
-            orderNumber: notif.relatedOrderNumber ?? '#${notif.relatedOrderId}',
+            orderNumber:
+                notif.relatedOrderNumber ?? '#${notif.relatedOrderId}',
           ),
           transitionsBuilder: (_, anim, __, child) => SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(1, 0), end: Offset.zero,
+              begin: const Offset(1, 0),
+              end: Offset.zero,
             ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
             child: child,
           ),
@@ -68,11 +99,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       Navigator.push(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, anim, __) => SupportChatScreen(
-              activeOrderId: notif.relatedOrderId),
+          pageBuilder: (_, anim, __) =>
+              SupportChatScreen(activeOrderId: notif.relatedOrderId),
           transitionsBuilder: (_, anim, __, child) => SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(1, 0), end: Offset.zero,
+              begin: const Offset(1, 0),
+              end: Offset.zero,
             ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
             child: child,
           ),
@@ -84,89 +116,153 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   @override
   Widget build(BuildContext context) {
+    // The header now runs full-bleed under the status bar (same as the home
+    // screen), so the status bar icons must be light on the dark maroon.
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
     ));
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fade,
-          child: Consumer<NotificationsProvider>(
-            builder: (context, provider, _) {
-              return Column(
-                children: [
-                  _buildHeader(context, provider),
-                  Expanded(child: _buildBody(context, provider)),
-                ],
-              );
-            },
-          ),
+      body: FadeTransition(
+        opacity: _fade,
+        child: Consumer<NotificationsProvider>(
+          builder: (context, provider, _) {
+            return Column(
+              children: [
+                _buildHeader(context, provider),
+                Expanded(
+                  child: SafeArea(
+                    top: false,
+                    child: _buildBody(context, provider),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
+  // ─── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context, NotificationsProvider provider) {
+    final safeTop = MediaQuery.of(context).padding.top;
+    final unread = provider.unreadCount;
+
     return Container(
-      color: AppColors.primaryDark,
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
-      child: Row(
+      width: double.infinity,
+      padding: EdgeInsets.only(top: safeTop),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.primaryDark, Color(0xFF7C1220)],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            color: AppColors.textOnDark,
-            onPressed: () => Navigator.pop(context),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+          // ── Title row ──────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, AppSpacing.md, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  'Notifications',
-                  style: GoogleFonts.playfairDisplaySc(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textOnDark,
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                  color: AppColors.textOnDark,
+                  onPressed: () => Navigator.pop(context),
+                  tooltip: 'Back',
+                  padding: const EdgeInsets.all(8),
+                  constraints:
+                      const BoxConstraints(minWidth: 40, minHeight: 40),
+                ),
+                const SizedBox(width: 2),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Notifications',
+                        style: GoogleFonts.playfairDisplaySc(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textOnDark,
+                          letterSpacing: 0.3,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        unread > 0
+                            ? '$unread unread update${unread == 1 ? '' : 's'}'
+                            : 'You\u2019re all caught up',
+                        style: GoogleFonts.karla(
+                          fontSize: 11,
+                          color: AppColors.textOnDark.withOpacity(0.7),
+                          letterSpacing: 0.2,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (provider.unreadCount > 0)
-                  Text(
-                    '${provider.unreadCount} unread',
-                    style: GoogleFonts.karla(
-                      fontSize: 11,
-                      color: AppColors.gold,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                if (unread > 0) _MarkAllReadButton(onPressed: provider.markAllRead),
               ],
             ),
           ),
-          if (provider.unreadCount > 0)
-            TextButton(
-              onPressed: provider.markAllRead,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm, vertical: 4),
-              ),
-              child: Text(
-                'Mark all read',
-                style: GoogleFonts.karla(
-                  fontSize: 12,
-                  color: AppColors.gold.withOpacity(0.85),
-                  fontWeight: FontWeight.w600,
+
+          // ── Filter chips ───────────────────────────────────────────────────
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.sm + 2, AppSpacing.md, AppSpacing.md),
+            child: Row(
+              children: [
+                _FilterChip(
+                  label: 'All',
+                  selected: _filter == _NotifFilter.all,
+                  onTap: () => setState(() => _filter = _NotifFilter.all),
                 ),
+                _FilterChip(
+                  label: 'Orders',
+                  selected: _filter == _NotifFilter.orders,
+                  onTap: () => setState(() => _filter = _NotifFilter.orders),
+                ),
+                _FilterChip(
+                  label: 'Payments',
+                  selected: _filter == _NotifFilter.payments,
+                  onTap: () => setState(() => _filter = _NotifFilter.payments),
+                ),
+                _FilterChip(
+                  label: 'Support',
+                  selected: _filter == _NotifFilter.support,
+                  onTap: () => setState(() => _filter = _NotifFilter.support),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Gold hairline separating the header from the list ──────────────
+          Container(
+            height: 3,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.transparent, AppColors.gold, Colors.transparent],
               ),
             ),
+          ),
         ],
       ),
     );
   }
 
+  // ─── Body ──────────────────────────────────────────────────────────────────
   Widget _buildBody(BuildContext context, NotificationsProvider provider) {
     switch (provider.state) {
       case NotifLoadState.initial:
@@ -176,12 +272,23 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         return _buildError(context, provider);
       case NotifLoadState.loaded:
         if (provider.notifications.isEmpty) return _buildEmpty(context);
-        return _buildList(context, provider);
+
+        final filtered =
+            provider.notifications.where(_matchesFilter).toList(growable: false);
+        if (filtered.isEmpty) return _buildNoMatch(context);
+
+        return _buildList(context, provider, filtered);
     }
   }
 
-  Widget _buildList(BuildContext context, NotificationsProvider provider) {
-    final grouped = _groupByDate(provider.notifications);
+  Widget _buildList(
+    BuildContext context,
+    NotificationsProvider provider,
+    List<AppNotification> items,
+  ) {
+    final grouped = _groupByDate(items);
+    final bottomPad =
+        AppSpacing.xxl + MediaQuery.of(context).padding.bottom;
 
     return RefreshIndicator(
       onRefresh: provider.refresh,
@@ -189,13 +296,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       backgroundColor: AppColors.background,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
+        padding: EdgeInsets.fromLTRB(0, AppSpacing.sm, 0, bottomPad),
         itemCount: grouped.length,
         itemBuilder: (context, i) {
           final entry = grouped[i];
-          if (entry is String) {
-            return _DateHeader(label: entry);
-          }
+          if (entry is String) return _DateHeader(label: entry);
+
           final notif = entry as AppNotification;
           return _NotificationCard(
             key: ValueKey('notif_${notif.id}'),
@@ -227,10 +333,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     final d = DateTime(dt.year, dt.month, dt.day);
     if (d == today) return 'Today';
     if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
     return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
   }
 
+  // ─── Empty state ───────────────────────────────────────────────────────────
   Widget _buildEmpty(BuildContext context) {
     return Center(
       child: Padding(
@@ -238,11 +348,20 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CustomPaint(
-              size: const Size(72, 72),
-              painter: _BellPainter(empty: true),
+            Container(
+              width: 96,
+              height: 96,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceWarm,
+                shape: BoxShape.circle,
+                border:
+                    Border.all(color: AppColors.gold.withOpacity(0.4), width: 1.5),
+              ),
+              child: const Icon(Icons.notifications_none_rounded,
+                  color: AppColors.gold, size: 44),
             ),
-            const SizedBox(height: AppSpacing.xl),
+            const SizedBox(height: AppSpacing.lg),
             Text('No notifications yet',
                 style: AppTextStyles.headline(context),
                 textAlign: TextAlign.center),
@@ -258,15 +377,50 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     );
   }
 
+  // ─── Filter matched nothing ────────────────────────────────────────────────
+  Widget _buildNoMatch(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.filter_alt_off_outlined,
+                color: AppColors.textMuted, size: 44),
+            const SizedBox(height: AppSpacing.md),
+            Text('Nothing in this category',
+                style: AppTextStyles.headline(context),
+                textAlign: TextAlign.center),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'You have notifications, but none match this filter yet.',
+              style: AppTextStyles.bodyMedium(context),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            GoldOutlineButton(
+              label: 'SHOW ALL',
+              onPressed: () => setState(() => _filter = _NotifFilter.all),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Loading skeleton ──────────────────────────────────────────────────────
   Widget _buildSkeleton() {
     return ListView.separated(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.xxl),
       itemCount: 5,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm + 2),
       itemBuilder: (_, __) => const _NotifSkeleton(),
     );
   }
 
+  // ─── Error state ───────────────────────────────────────────────────────────
   Widget _buildError(BuildContext context, NotificationsProvider p) {
     return Center(
       child: Padding(
@@ -280,6 +434,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
             Text('Could not load notifications',
                 style: AppTextStyles.headline(context),
                 textAlign: TextAlign.center),
+            if (p.errorMessage != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(p.errorMessage!,
+                  style: AppTextStyles.bodyMedium(context),
+                  textAlign: TextAlign.center),
+            ],
             const SizedBox(height: AppSpacing.xl),
             PrimaryButton(label: 'TRY AGAIN', onPressed: p.refresh, isSmall: true),
           ],
@@ -289,6 +449,105 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   }
 }
 
+// ─── Mark all read button ────────────────────────────────────────────────────
+class _MarkAllReadButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  const _MarkAllReadButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          decoration: BoxDecoration(
+            color: AppColors.gold,
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            boxShadow: AppShadows.goldGlow,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.done_all_rounded,
+                  size: 15, color: AppColors.primaryDark),
+              const SizedBox(width: 5),
+              Text(
+                'Mark all read',
+                style: GoogleFonts.karla(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryDark,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Filter chip (matches the home screen's category chips) ──────────────────
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.sm),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected
+                  ? AppColors.gold
+                  : AppColors.textOnDark.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              border: Border.all(
+                color: selected
+                    ? AppColors.gold
+                    : AppColors.textOnDark.withOpacity(0.25),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              label,
+              style: GoogleFonts.karla(
+                fontSize: 12,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                color: selected
+                    ? AppColors.primaryDark
+                    : AppColors.textOnDark.withOpacity(0.75),
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Date header ─────────────────────────────────────────────────────────────
 class _DateHeader extends StatelessWidget {
   final String label;
   const _DateHeader({required this.label});
@@ -297,18 +556,18 @@ class _DateHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.lg, AppSpacing.md, AppSpacing.sm),
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.sm),
       child: Row(
         children: [
-          CustomPaint(size: const Size(10, 10), painter: _DiamondPainter()),
+          CustomPaint(size: const Size(9, 9), painter: _DiamondPainter()),
           const SizedBox(width: 8),
           Text(
-            label,
+            label.toUpperCase(),
             style: GoogleFonts.karla(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textMuted,
-              letterSpacing: 0.8,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textSecondary,
+              letterSpacing: 1.1,
             ),
           ),
           const SizedBox(width: 8),
@@ -319,6 +578,7 @@ class _DateHeader extends StatelessWidget {
   }
 }
 
+// ─── Notification card ───────────────────────────────────────────────────────
 class _NotificationCard extends StatelessWidget {
   final AppNotification notif;
   final VoidCallback onTap;
@@ -328,184 +588,62 @@ class _NotificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUnread = !notif.isRead;
-    final isWide = MediaQuery.of(context).size.width >= 600;
+    final visual = _notifVisual(notif.type);
 
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        margin: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          0,
-          AppSpacing.md,
-          AppSpacing.sm,
-        ),
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: isUnread ? AppColors.surfaceWarm : AppColors.card,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(
-            color: isUnread ? AppColors.gold.withOpacity(0.35) : AppColors.border,
-            width: isUnread ? 1.5 : 1,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          margin: const EdgeInsets.fromLTRB(
+              AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm + 2),
+          decoration: BoxDecoration(
+            color: isUnread ? AppColors.surfaceWarm : AppColors.card,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(
+              color: isUnread
+                  ? AppColors.gold.withOpacity(0.45)
+                  : AppColors.border,
+              width: isUnread ? 1.5 : 1,
+            ),
+            boxShadow: isUnread ? AppShadows.card : const [],
           ),
-          boxShadow: isUnread ? AppShadows.card : [],
-        ),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (isUnread)
-                Container(
-                  width: 4,
-                  color: AppColors.gold,
-                ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: _iconBg(notif.type),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                      child: notif.type == NotificationType.supportMessage
-                          ? ClipOval(
-                              child: Image.asset(
-                                'assets/images/ndo_bot.png',
-                                width: 24,
-                                height: 24,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => CustomPaint(
-                                  size: const Size(20, 20),
-                                  painter: _NotifIconPainter(notif.type),
-                                ),
-                              ),
-                            )
-                          : CustomPaint(
-                              size: const Size(20, 20),
-                              painter: _NotifIconPainter(notif.type),
-                            ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (isUnread)
+                  Container(
+                    width: 4,
+                    decoration: const BoxDecoration(
+                      color: AppColors.gold,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(AppRadius.lg),
+                        bottomLeft: Radius.circular(AppRadius.lg),
+                      ),
                     ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    notif.type.title,
-                                    style: GoogleFonts.karla(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                      height: 1.2,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _formatTime(notif.createdAt),
-                                  style: AppTextStyles.caption(context),
-                                ),
-                                if (isUnread) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    width: 7,
-                                    height: 7,
-                                    decoration: const BoxDecoration(
-                                      color: AppColors.gold,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              notif.message,
-                              style: GoogleFonts.karla(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                                height: 1.45,
-                              ),
-                              maxLines: isWide ? 3 : 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (notif.relatedOrderNumber != null) ...[
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.06),
-                                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                                  border: Border.all(
-                                      color: AppColors.primary.withOpacity(0.2),
-                                      width: 1),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    CustomPaint(
-                                      size: const Size(10, 10),
-                                      painter: _OrderTagPainter(),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      notif.relatedOrderNumber!,
-                                      style: GoogleFonts.karla(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.primary,
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                    if (notif.type.isOrderRelated) ...[
-                                      const SizedBox(width: 4),
-                                      const Icon(Icons.chevron_right_rounded,
-                                          size: 12, color: AppColors.primary),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
+                  ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _TypeIcon(visual: visual),
+                        const SizedBox(width: AppSpacing.sm + 4),
+                        Expanded(child: _content(context, isUnread, visual)),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
-  }
-
-  Color _iconBg(NotificationType type) {
-    switch (type) {
-      case NotificationType.orderCompleted:
-        return AppColors.success.withOpacity(0.12);
-      case NotificationType.orderCancelled:
-      case NotificationType.paymentFailed:
-        return AppColors.error.withOpacity(0.1);
-      case NotificationType.paymentReceived:
-        return AppColors.gold.withOpacity(0.12);
-      case NotificationType.supportMessage:
-        return AppColors.primaryDark.withOpacity(0.12);
-      default:
-        return AppColors.primary.withOpacity(0.08);
-    }
   }
 
   String _formatTime(DateTime dt) {
@@ -513,8 +651,226 @@ class _NotificationCard extends StatelessWidget {
     final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m ${dt.hour < 12 ? 'AM' : 'PM'}';
   }
+
+  Widget _content(
+    BuildContext context,
+    bool isUnread,
+    _NotifVisual visual,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Title + time (+ unread dot) ──────────────────────────────────────
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                notif.type.title,
+                style: GoogleFonts.karla(
+                  fontSize: 13.5,
+                  fontWeight: isUnread ? FontWeight.w800 : FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  height: 1.25,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _formatTime(notif.createdAt),
+              style: GoogleFonts.karla(
+                fontSize: 11,
+                color: isUnread
+                    ? visual.fg
+                    : AppColors.textMuted,
+                fontWeight: isUnread ? FontWeight.w700 : FontWeight.w400,
+                letterSpacing: 0.2,
+              ),
+            ),
+            if (isUnread) ...[
+              const SizedBox(width: 6),
+              Container(
+                width: 7,
+                height: 7,
+                margin: const EdgeInsets.only(top: 4),
+                decoration: const BoxDecoration(
+                    color: AppColors.gold, shape: BoxShape.circle),
+              ),
+            ],
+          ],
+        ),
+
+        const SizedBox(height: 4),
+
+        Text(
+          notif.message,
+          style: GoogleFonts.karla(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+            height: 1.45,
+          ),
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+        ),
+
+        // ── Order tag ────────────────────────────────────────────────────────
+        if (notif.relatedOrderNumber != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+              border: Border.all(
+                color: AppColors.primary.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CustomPaint(
+                    size: const Size(10, 10), painter: _OrderTagPainter()),
+                const SizedBox(width: 5),
+                Text(
+                  notif.relatedOrderNumber!,
+                  style: GoogleFonts.karla(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                if (_canTrack(notif)) ...[
+                  const SizedBox(width: 1),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 14, color: AppColors.primary),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
+// ─── Type icon ───────────────────────────────────────────────────────────────
+class _TypeIcon extends StatelessWidget {
+  final _NotifVisual visual;
+  const _TypeIcon({required this.visual});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 42,
+      height: 42,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: visual.bg,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: visual.fg.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: visual.isImage
+          ? ClipOval(
+              child: Image.asset(
+                'assets/images/ndo_bot.png',
+                width: 34,
+                height: 34,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Icon(visual.icon, color: visual.fg, size: 20),
+              ),
+            )
+          : Icon(visual.icon, color: visual.fg, size: 21),
+    );
+  }
+}
+
+// ─── Per-type colours + icons ────────────────────────────────────────────────
+class _NotifVisual {
+  final Color fg;
+  final Color bg;
+  final IconData icon;
+  final bool isImage;
+  const _NotifVisual({
+    required this.fg,
+    required this.bg,
+    required this.icon,
+    this.isImage = false,
+  });
+}
+
+_NotifVisual _notifVisual(NotificationType t) {
+  switch (t) {
+    case NotificationType.orderConfirmed:
+      return _NotifVisual(
+        fg: AppColors.primary,
+        bg: AppColors.primary.withOpacity(0.09),
+        icon: Icons.receipt_long_rounded,
+      );
+    case NotificationType.orderPreparing:
+      return _NotifVisual(
+        fg: AppColors.gold,
+        bg: AppColors.gold.withOpacity(0.12),
+        icon: Icons.soup_kitchen_rounded,
+      );
+    case NotificationType.orderReady:
+      return _NotifVisual(
+        fg: AppColors.success,
+        bg: AppColors.success.withOpacity(0.12),
+        icon: Icons.inventory_2_rounded,
+      );
+    case NotificationType.orderOutForDelivery:
+      return _NotifVisual(
+        fg: AppColors.primary,
+        bg: AppColors.primary.withOpacity(0.09),
+        icon: Icons.delivery_dining_rounded,
+      );
+    case NotificationType.orderCompleted:
+      return _NotifVisual(
+        fg: AppColors.success,
+        bg: AppColors.success.withOpacity(0.12),
+        icon: Icons.check_circle_rounded,
+      );
+    case NotificationType.orderCancelled:
+      return _NotifVisual(
+        fg: AppColors.error,
+        bg: AppColors.error.withOpacity(0.10),
+        icon: Icons.cancel_rounded,
+      );
+    case NotificationType.paymentReceived:
+      return _NotifVisual(
+        fg: AppColors.gold,
+        bg: AppColors.gold.withOpacity(0.12),
+        icon: Icons.payments_rounded,
+      );
+    case NotificationType.paymentFailed:
+      return _NotifVisual(
+        fg: AppColors.error,
+        bg: AppColors.error.withOpacity(0.10),
+        icon: Icons.error_outline_rounded,
+      );
+    case NotificationType.supportMessage:
+      return _NotifVisual(
+        fg: AppColors.primaryDark,
+        bg: AppColors.primaryDark.withOpacity(0.12),
+        icon: Icons.support_agent_rounded,
+        isImage: true,
+      );
+    case NotificationType.system:
+      return _NotifVisual(
+        fg: AppColors.textSecondary,
+        bg: AppColors.surfaceWarm,
+        icon: Icons.notifications_rounded,
+      );
+  }
+}
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
 class _NotifSkeleton extends StatefulWidget {
   const _NotifSkeleton();
   @override
@@ -528,13 +884,16 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
       ..repeat(reverse: true);
     _a = CurvedAnimation(parent: _c, curve: Curves.easeInOut);
   }
+
   @override
-  void dispose() { _c.dispose(); super.dispose(); }
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -544,7 +903,7 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
         final col = Color.lerp(
             const Color(0xFFEFEBE4), const Color(0xFFDDD8CF), _a.value)!;
         return Container(
-          height: 88,
+          height: 96,
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             color: AppColors.card,
@@ -555,24 +914,39 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 40, height: 40,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(color: col, shape: BoxShape.circle),
               ),
-              const SizedBox(width: AppSpacing.md),
+              const SizedBox(width: AppSpacing.sm + 4),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Container(height: 13, width: 140,
-                        decoration: BoxDecoration(color: col,
-                            borderRadius: BorderRadius.circular(AppRadius.sm))),
-                    Container(height: 10, width: double.infinity,
-                        decoration: BoxDecoration(color: col,
-                            borderRadius: BorderRadius.circular(AppSpacing.sm))),
-                    Container(height: 10, width: 200,
-                        decoration: BoxDecoration(color: col,
-                            borderRadius: BorderRadius.circular(AppSpacing.sm))),
+                    Container(
+                        height: 13,
+                        width: 140,
+                        decoration: BoxDecoration(
+                            color: col,
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.sm))),
+                    const SizedBox(height: 6),
+                    Container(
+                        height: 10,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                            color: col,
+                            borderRadius:
+                                BorderRadius.circular(AppSpacing.sm))),
+                    const SizedBox(height: 5),
+                    Container(
+                        height: 10,
+                        width: 200,
+                        decoration: BoxDecoration(
+                            color: col,
+                            borderRadius:
+                                BorderRadius.circular(AppSpacing.sm))),
                   ],
                 ),
               ),
@@ -584,95 +958,20 @@ class _NotifSkeletonState extends State<_NotifSkeleton>
   }
 }
 
-class _NotifIconPainter extends CustomPainter {
-  final NotificationType type;
-  const _NotifIconPainter(this.type);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..color = _color;
-
-    switch (type.iconIndex) {
-      case 0: _drawOrder(canvas, size, p); break;
-      case 1: _drawPayment(canvas, size, p); break;
-      case 2: _drawChat(canvas, size, p); break;
-      default: _drawLantern(canvas, size, p);
-    }
-  }
-
-  Color get _color {
-    switch (type) {
-      case NotificationType.orderCompleted:  return AppColors.success;
-      case NotificationType.orderCancelled:
-      case NotificationType.paymentFailed:   return AppColors.error;
-      case NotificationType.paymentReceived: return AppColors.gold;
-      case NotificationType.supportMessage:  return AppColors.primaryDark;
-      default:                               return AppColors.primary;
-    }
-  }
-
-  void _drawOrder(Canvas canvas, Size s, Paint p) {
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(s.width * 0.1, 0, s.width * 0.8, s.height), const Radius.circular(3)), p);
-    for (int i = 0; i < 3; i++) {
-      final y = s.height * (0.3 + i * 0.2);
-      canvas.drawLine(Offset(s.width * 0.25, y), Offset(s.width * 0.75, y), p);
-    }
-  }
-
-  void _drawPayment(Canvas canvas, Size s, Paint p) {
-    canvas.drawOval(Rect.fromLTWH(s.width * 0.1, s.height * 0.4, s.width * 0.8, s.height * 0.3), p);
-    canvas.drawLine(Offset(s.width * 0.1, s.height * 0.55), Offset(s.width * 0.1, s.height * 0.2), p);
-    canvas.drawLine(Offset(s.width * 0.9, s.height * 0.55), Offset(s.width * 0.9, s.height * 0.2), p);
-    canvas.drawArc(Rect.fromLTWH(s.width * 0.1, s.height * 0.05, s.width * 0.8, s.height * 0.3), 3.14 * 1.0, 3.14, false, p);
-  }
-
-  void _drawChat(Canvas canvas, Size s, Paint p) {
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(0, 0, s.width * 0.9, s.height * 0.75), const Radius.circular(5)), p);
-    canvas.drawLine(Offset(s.width * 0.12, s.height * 0.75), Offset(0, s.height), p);
-    for (int i = 0; i < 3; i++) {
-      canvas.drawCircle(Offset(s.width * (0.25 + i * 0.25), s.height * 0.38), 1.5, p..style = PaintingStyle.fill);
-    }
-    p.style = PaintingStyle.stroke;
-  }
-
-  void _drawLantern(Canvas canvas, Size s, Paint p) {
-    canvas.drawLine(Offset(s.width / 2, 0), Offset(s.width / 2, s.height * 0.15), p);
-    final body = Path()..moveTo(s.width * 0.1, s.height * 0.18)..quadraticBezierTo(0, s.height * 0.5, s.width * 0.1, s.height * 0.82)..lineTo(s.width * 0.9, s.height * 0.82)..quadraticBezierTo(s.width, s.height * 0.5, s.width * 0.9, s.height * 0.18)..close();
-    canvas.drawPath(body, p);
-    canvas.drawLine(Offset(s.width * 0.1, s.height * 0.5), Offset(s.width * 0.9, s.height * 0.5), p..color = _color.withOpacity(0.4)..strokeWidth = 1);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter _) => false;
-}
-
-class _BellPainter extends CustomPainter {
-  final bool empty;
-  const _BellPainter({this.empty = false});
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = AppColors.gold.withOpacity(empty ? 0.3 : 0.8)..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round;
-    final w = size.width; final h = size.height;
-    final bell = Path()..moveTo(w * 0.5, h * 0.05)..quadraticBezierTo(w * 0.1, h * 0.25, w * 0.1, h * 0.65)..lineTo(w * 0.9, h * 0.65)..quadraticBezierTo(w * 0.9, h * 0.25, w * 0.5, h * 0.05);
-    canvas.drawPath(bell, p);
-    canvas.drawLine(Offset(w * 0.05, h * 0.65), Offset(w * 0.95, h * 0.65), p);
-    canvas.drawOval(Rect.fromLTWH(w * 0.38, h * 0.72, w * 0.24, h * 0.15), p);
-    canvas.drawLine(Offset(w * 0.5, 0), Offset(w * 0.5, h * 0.05), p);
-  }
-  @override
-  bool shouldRepaint(covariant CustomPainter _) => false;
-}
-
+// ─── Small decorative painters ───────────────────────────────────────────────
 class _DiamondPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawPath(Path()..moveTo(size.width / 2, 0)..lineTo(size.width, size.height / 2)..lineTo(size.width / 2, size.height)..lineTo(0, size.height / 2)..close(), Paint()..color = AppColors.gold..style = PaintingStyle.fill);
+    final path = Path()
+      ..moveTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height / 2)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(0, size.height / 2)
+      ..close();
+    canvas.drawPath(
+        path, Paint()..color = AppColors.gold..style = PaintingStyle.fill);
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
 }
@@ -680,11 +979,26 @@ class _DiamondPainter extends CustomPainter {
 class _OrderTagPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = AppColors.primary..style = PaintingStyle.stroke..strokeWidth = 1.2..strokeCap = StrokeCap.round;
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(0, size.height * 0.1, size.width * 0.85, size.height * 0.8), const Radius.circular(2)), p);
-    canvas.drawLine(Offset(size.width * 0.2, size.height * 0.4), Offset(size.width * 0.65, size.height * 0.4), p);
-    canvas.drawLine(Offset(size.width * 0.2, size.height * 0.65), Offset(size.width * 0.5, size.height * 0.65), p);
+    final p = Paint()
+      ..color = AppColors.primary
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(0, size.height * 0.1, size.width * 0.85, size.height * 0.8),
+            const Radius.circular(2)),
+        p);
+    canvas.drawLine(
+        Offset(size.width * 0.2, size.height * 0.4),
+        Offset(size.width * 0.65, size.height * 0.4),
+        p);
+    canvas.drawLine(
+        Offset(size.width * 0.2, size.height * 0.65),
+        Offset(size.width * 0.5, size.height * 0.65),
+        p);
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
 }

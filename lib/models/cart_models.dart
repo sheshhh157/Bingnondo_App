@@ -103,6 +103,8 @@ class CustomerProfile {
   final String? lastName;
   final String? mobileNumber;
   final String? address;
+  final double? latitude;
+  final double? longitude;
   final RestrictionLevel restrictionLevel;
 
   const CustomerProfile({
@@ -113,10 +115,14 @@ class CustomerProfile {
     this.lastName,
     this.mobileNumber,
     this.address,
+    this.latitude,
+    this.longitude,
     this.restrictionLevel = RestrictionLevel.none,
   });
 
   factory CustomerProfile.fromJson(Map<String, dynamic> json) {
+    final lat = json['latitude'];
+    final lng = json['longitude'];
     return CustomerProfile(
       id:               json['id'] as int,
       email:            json['email'] as String,
@@ -125,6 +131,8 @@ class CustomerProfile {
       lastName:         json['last_name'] as String?,
       mobileNumber:     json['mobile_number'] as String?,
       address:          json['address'] as String?,
+      latitude:         lat is num ? lat.toDouble() : null,
+      longitude:        lng is num ? lng.toDouble() : null,
       restrictionLevel: RestrictionLevelX.fromString(
         json['restriction_level'] as String?,
       ),
@@ -147,6 +155,10 @@ class PlaceOrderRequest {
   // GCash only — from extract-receipt step
   final String?        gcashReceiptTempUrl;
   final String?        gcashRefNumber;
+  // Per-order delivery pin (chosen / changed at checkout)
+  final String?        deliveryAddress;
+  final double?        deliveryLatitude;
+  final double?        deliveryLongitude;
 
   const PlaceOrderRequest({
     required this.items,
@@ -154,6 +166,9 @@ class PlaceOrderRequest {
     this.orderNotes,
     this.gcashReceiptTempUrl,
     this.gcashRefNumber,
+    this.deliveryAddress,
+    this.deliveryLatitude,
+    this.deliveryLongitude,
   });
 
   Map<String, dynamic> toJson() => {
@@ -168,6 +183,12 @@ class PlaceOrderRequest {
       'gcash_receipt_temp_url': gcashReceiptTempUrl,
     if (gcashRefNumber != null)
       'gcash_ref_number': gcashRefNumber,
+    if (deliveryAddress != null && deliveryAddress!.trim().isNotEmpty)
+      'delivery_address': deliveryAddress,
+    if (deliveryLatitude != null)
+      'delivery_latitude': deliveryLatitude,
+    if (deliveryLongitude != null)
+      'delivery_longitude': deliveryLongitude,
   };
 }
 

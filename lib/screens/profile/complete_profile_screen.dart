@@ -12,8 +12,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../mock/mock_data.dart';
+import '../../models/geo_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import '../../widgets/address_picker_field.dart';
 import '../../services/cart_service.dart';
 
 class CompleteProfileScreen extends StatefulWidget {
@@ -29,7 +31,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl  = TextEditingController();
   final _mobileCtrl    = TextEditingController();
-  final _addressCtrl   = TextEditingController();
+
+  PickedAddress? _pickedAddress;
 
   bool    _isLoading     = false;
   String? _errorMessage;
@@ -53,7 +56,6 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _mobileCtrl.dispose();
-    _addressCtrl.dispose();
     super.dispose();
   }
 
@@ -79,7 +81,9 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
           firstName:    _firstNameCtrl.text,
           lastName:     _lastNameCtrl.text,
           mobileNumber: _mobileCtrl.text,
-          address:      _addressCtrl.text,
+          address:      _pickedAddress?.address ?? '',
+          latitude:     _pickedAddress?.latitude,
+          longitude:    _pickedAddress?.longitude,
         );
         if (!mounted) return;
         setState(() => _successMessage = 'Profile saved!');
@@ -174,12 +178,11 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
                       },
                     ),
                     const SizedBox(height: 16),
-                    _buildField(
-                      controller: _addressCtrl,
-                      label:      'Delivery Address',
-                      hint:       'e.g. 123 Ongpin St, Binondo, Manila',
-                      maxLines:   3,
-                      validator:  (v) => (v == null || v.trim().isEmpty) ? 'Address is required' : null,
+                    AddressPickerField(
+                      label:    'Delivery Address',
+                      hint:     'Tap to pin your delivery location on the map',
+                      required: true,
+                      onChanged: (p) => _pickedAddress = p,
                     ),
                   ],
                 ),

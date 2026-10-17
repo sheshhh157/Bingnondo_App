@@ -23,11 +23,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/cart_models.dart';
+import '../../models/geo_models.dart';
 import '../../services/cart_provider.dart';
 import '../../services/orders_provider.dart';
 import '../../services/gcash_receipt_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import '../address/address_picker_screen.dart';
 import '../orders/my_orders_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -313,6 +315,19 @@ class _PaymentStepState extends State<_PaymentStep> {
     );
   }
 
+  // ── Change delivery pin (checkout) ─────────────────────────────────────────
+  Future<void> _changeAddress() async {
+    final picked = await Navigator.push<PickedAddress>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddressPickerScreen(initial: cart.deliveryAddress),
+      ),
+    );
+    if (picked != null) {
+      cart.setDeliveryAddress(picked);
+    }
+  }
+
   // ── Upload + OCR ───────────────────────────────────────────────────────────
   Future<void> _extractReceipt() async {
     if (_pickedImage == null) return;
@@ -351,9 +366,35 @@ class _PaymentStepState extends State<_PaymentStep> {
 
               // ── Deliver to ────────────────────────────────────────────────
               if (cart.profile != null) ...[
-                Text('Deliver to', style: AppTextStyles.label(context)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Deliver to', style: AppTextStyles.label(context)),
+                    GestureDetector(
+                      onTap: _changeAddress,
+                      child: Text(
+                        'CHANGE',
+                        style: GoogleFonts.karla(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.gold,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: AppSpacing.sm),
-                _DeliverToCard(profile: cart.profile!),
+                _DeliverToCard(
+                  profile: cart.profile!,
+                  address: cart.deliveryAddress?.address,
+                  onTap: _changeAddress,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _SaveAddressToggle(
+                  value:     cart.saveAddressToProfile,
+                  onChanged: cart.setSaveAddressToProfile,
+                ),
                 const SizedBox(height: AppSpacing.xl),
               ],
 
@@ -866,6 +907,13 @@ class _ConfirmationStep extends StatelessWidget {
                 label: 'Payment',
                 value: isGcash ? 'GCash' : 'Cash on Delivery',
               ),
+              if ((cart.deliveryAddress?.address.isNotEmpty ?? false)) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _ConfirmRow(
+                  label: 'Deliver to',
+                  value: cart.deliveryAddress!.address,
+                ),
+              ],
               const SizedBox(height: AppSpacing.md),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -993,21 +1041,26 @@ class _ConfirmRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
             style: AppTextStyles.bodyMedium(context)
                 .copyWith(color: AppColors.textMuted)),
-        Text(
-          value,
-          style: emphasize
-              ? GoogleFonts.playfairDisplaySc(
-              fontSize:   18,
-              fontWeight: FontWeight.w700,
-              color:      AppColors.primary)
-              : GoogleFonts.karla(
-              fontSize:   14,
-              fontWeight: FontWeight.w700,
-              color:      AppColors.textPrimary),
+        const SizedBox(width: AppSpacing.md),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: emphasize
+                ? GoogleFonts.playfairDisplaySc(
+                fontSize:   18,
+                fontWeight: FontWeight.w700,
+                color:      AppColors.primary)
+                : GoogleFonts.karla(
+                fontSize:   14,
+                fontWeight: FontWeight.w700,
+                color:      AppColors.textPrimary),
+          ),
         ),
       ],
     );
@@ -1121,47 +1174,100 @@ class _CheckoutBottomBar extends StatelessWidget {
 
 class _DeliverToCard extends StatelessWidget {
   final CustomerProfile profile;
-  const _DeliverToCard({required this.profile});
+  final String? address;
+  final VoidCallback? onTap;
+  const _DeliverToCard({required this.profile, this.address, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding:    const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color:        AppColors.card,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border:       Border.all(color: AppColors.border),
-        boxShadow:    AppShadows.card,
-      ),
-      child: Row(children: [
-        Container(
-          padding:    const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-              color: AppColors.gold.withOpacity(0.1), shape: BoxShape.circle),
-          child: const Icon(Icons.location_on_rounded,
-              color: AppColors.gold, size: 18),
+    final displayAddress = (address != null && address!.trim().isNotEmpty)
+        ? address
+        : profile.address;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:    const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color:        AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border:       Border.all(color: AppColors.border),
+          boxShadow:    AppShadows.card,
         ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(profile.displayName,
-                  style: GoogleFonts.karla(
-                      fontSize:   14,
-                      fontWeight: FontWeight.w700,
-                      color:      AppColors.textPrimary)),
-              if (profile.address != null) ...[
-                const SizedBox(height: 2),
-                Text(profile.address!,
-                    style:    AppTextStyles.bodySmall(context),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-              ],
-            ],
+        child: Row(children: [
+          Container(
+            padding:    const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+                color: AppColors.gold.withOpacity(0.1), shape: BoxShape.circle),
+            child: const Icon(Icons.location_on_rounded,
+                color: AppColors.gold, size: 18),
           ),
-        ),
-      ]),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(profile.displayName,
+                    style: GoogleFonts.karla(
+                        fontSize:   14,
+                        fontWeight: FontWeight.w700,
+                        color:      AppColors.textPrimary)),
+                if (displayAddress != null) ...[
+                  const SizedBox(height: 2),
+                  Text(displayAddress,
+                      style:    AppTextStyles.bodySmall(context),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ],
+            ),
+          ),
+          if (onTap != null) ...[
+            const SizedBox(width: AppSpacing.sm),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textMuted, size: 20),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+// ── "Save as my default address" toggle ───────────────────────────────────────
+class _SaveAddressToggle extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  const _SaveAddressToggle({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: Checkbox(
+              value: value,
+              onChanged: (v) => onChanged(v ?? false),
+              activeColor: AppColors.primary,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4)),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'Save as my default address',
+              style: GoogleFonts.karla(
+                  fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
