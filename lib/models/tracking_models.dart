@@ -142,6 +142,10 @@ class OrderDetail {
   final DeliveryInfo? delivery;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  // Payment details
+  final String? paymentStatus;    // 'pending' | 'awaiting_verification' | 'paid' | 'rejected'
+  final String? rejectionReason;  // set by staff when payment is rejected
+  final String? receiptImageUrl;  // current receipt on file
 
   const OrderDetail({
     required this.id,
@@ -154,7 +158,13 @@ class OrderDetail {
     this.delivery,
     required this.createdAt,
     this.updatedAt,
+    this.paymentStatus,
+    this.rejectionReason,
+    this.receiptImageUrl,
   });
+
+  bool get isPaymentRejected => paymentStatus == 'rejected';
+  bool get isGcash => paymentMethod == 'gcash';
 
   factory OrderDetail.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'] as List<dynamic>? ?? [];
@@ -172,22 +182,25 @@ class OrderDetail {
     }
 
     return OrderDetail(
-      id: json['id'] as int,
-      orderNumber: json['order_number'] as String,
-      status: mappedStatus,
-      paymentMethod: json['payment_method'] as String? ?? 'cod',
-      totalAmount: double.tryParse(json['total_amount'].toString()) ?? 0.0,
+      id:             json['id'] as int,
+      orderNumber:    json['order_number'] as String,
+      status:         mappedStatus,
+      paymentMethod:  json['payment_method'] as String? ?? 'cod',
+      totalAmount:    double.tryParse(json['total_amount'].toString()) ?? 0.0,
       items: rawItems
           .map((i) => OrderedItem.fromJson(i as Map<String, dynamic>))
           .toList(),
-      notes: json['notes'] as String?,
-      delivery: json['delivery'] != null
+      notes:          json['notes'] as String?,
+      delivery:       json['delivery'] != null
           ? DeliveryInfo.fromJson(json['delivery'] as Map<String, dynamic>)
           : null,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: json['updated_at'] != null
+      createdAt:      DateTime.parse(json['created_at'] as String),
+      updatedAt:      json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
+      paymentStatus:  json['payment_status']  as String?,
+      rejectionReason: json['rejection_reason'] as String?,
+      receiptImageUrl: json['receipt_image_url'] as String?,
     );
   }
 }

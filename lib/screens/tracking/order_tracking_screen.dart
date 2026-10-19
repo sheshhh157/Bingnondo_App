@@ -1,9 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/tracking_models.dart';
+import '../../services/gcash_receipt_service.dart';
 import '../../services/order_tracking_provider.dart';
+import '../../services/orders_service.dart';
 import '../../services/socket_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
@@ -105,7 +109,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       decoration: const BoxDecoration(
         color: AppColors.primaryDark,
         borderRadius:
-            BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+        BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
       ),
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
@@ -213,6 +217,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     pulse: _pulse,
                     steam: _steam,
                   ),
+
+                  // ── GCash rejection banner + re-upload ────────────────────
+                  if (order.isGcash && order.isPaymentRejected) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    _GcashRejectionBanner(
+                      orderId:         order.id,
+                      rejectionReason: order.rejectionReason,
+                      onUploaded:      tracking.refresh,
+                    ),
+                  ],
 
                   const SizedBox(height: AppSpacing.lg),
 
@@ -1647,4 +1661,305 @@ class _LalamoveIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GCash Rejection Banner + Re-upload
+// ══════════════════════════════════════════════════════════════════════════════
+class _GcashRejectionBanner extends StatefulWidget {
+  final int       orderId;
+  final String?   rejectionReason;
+  final VoidCallback onUploaded; // called after successful re-upload to refresh
+
+  const _GcashRejectionBanner({
+    required this.orderId,
+    required this.rejectionReason,
+    required this.onUploaded,
+  });
+
+  @override
+  State<_GcashRejectionBanner> createState() => _GcashRejectionBannerState();
+}
+
+class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
+  final _picker = ImagePicker();
+
+  File?   _pickedImage;
+  String? _mimeType;
+  bool    _isUploading  = false;
+  String? _uploadError;
+  bool    _uploadDone   = false;
+
+  Future<void> _pickImage(ImageSource source) async {
+    final picked = await _picker.pickImage(
+      source:       source,
+      imageQuality: 85,
+      maxWidth:     1600,
+    );
+    if (picked == null) return;
+    setState(() {
+      _pickedImage  = File(picked.path);
+      _mimeType     = picked.path.toLowerCase().endsWith('.png')
+          ? 'image/png' : 'image/jpeg';
+      _uploadError  = null;
+      _uploadDone   = false;
+    });
+  }
+
+  void _showSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(height: 16),
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded,
+                color: AppColors.primary),
+            title: Text('Choose from Gallery',
+                style: GoogleFonts.karla(fontWeight: FontWeight.w600)),
+            onTap: () { Navigator.pop(context); _pickImage(ImageSource.gallery); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_rounded,
+                color: AppColors.primary),
+            title: Text('Take a Photo',
+                style: GoogleFonts.karla(fontWeight: FontWeight.w600)),
+            onTap: () { Navigator.pop(context); _pickImage(ImageSource.camera); },
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _submitReupload() async {
+    if (_pickedImage == null) return;
+    setState(() { _isUploading = true; _uploadError = null; });
+
+    try {
+      await OrdersService.instance.reuploadReceipt(
+        orderId:   widget.orderId,
+        imageFile: _pickedImage!,
+        mimeType:  _mimeType ?? 'image/jpeg',
+      );
+      setState(() { _isUploading = false; _uploadDone = true; });
+      widget.onUploaded();
+    } on OrdersApiException catch (e) {
+      setState(() { _isUploading = false; _uploadError = e.message; });
+    } catch (e) {
+      setState(() {
+        _isUploading = false;
+        _uploadError = 'Upload failed. Please try again.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_uploadDone) {
+      return Container(
+        padding:    const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color:        Colors.green.shade50,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border:       Border.all(color: Colors.green.shade300),
+        ),
+        child: Row(children: [
+          Icon(Icons.check_circle_rounded,
+              color: Colors.green.shade600, size: 20),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'Receipt re-submitted! We\'ll verify it shortly.',
+              style: GoogleFonts.karla(
+                  fontSize:   13,
+                  fontWeight: FontWeight.w600,
+                  color:      Colors.green.shade700),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    return Container(
+      padding:    const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color:        AppColors.error.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border:       Border.all(
+            color: AppColors.error.withOpacity(0.4), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          // ── Rejection header ────────────────────────────────────────────
+          Row(children: [
+            Container(
+              padding:    const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color:  AppColors.error.withOpacity(0.1),
+                shape:  BoxShape.circle,
+              ),
+              child: Icon(Icons.cancel_rounded,
+                  color: AppColors.error, size: 16),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                'Receipt Rejected',
+                style: GoogleFonts.karla(
+                    fontSize:   14,
+                    fontWeight: FontWeight.w800,
+                    color:      AppColors.error),
+              ),
+            ),
+          ]),
+
+          // ── Reason ──────────────────────────────────────────────────────
+          if (widget.rejectionReason != null &&
+              widget.rejectionReason!.trim().isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Container(
+              width:   double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color:        AppColors.error.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Text(
+                '"${widget.rejectionReason}"',
+                style: GoogleFonts.karla(
+                    fontSize:  12,
+                    color:     AppColors.error,
+                    fontStyle: FontStyle.italic,
+                    height:    1.4),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: AppSpacing.md),
+
+          Text(
+            'Please upload a clear screenshot of your GCash receipt.',
+            style: GoogleFonts.karla(
+                fontSize: 12,
+                color:    AppColors.textSecondary,
+                height:   1.4),
+          ),
+
+          const SizedBox(height: AppSpacing.md),
+
+          // ── Image preview ────────────────────────────────────────────────
+          GestureDetector(
+            onTap: _isUploading ? null : _showSourceSheet,
+            child: Container(
+              width:  double.infinity,
+              height: _pickedImage != null ? null : 120,
+              decoration: BoxDecoration(
+                color:        AppColors.background,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                  color: _pickedImage != null
+                      ? AppColors.gold.withOpacity(0.5)
+                      : AppColors.border,
+                  width: _pickedImage != null ? 2 : 1,
+                ),
+              ),
+              child: _pickedImage != null
+                  ? ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.md - 1),
+                child: Image.file(_pickedImage!,
+                    fit: BoxFit.contain, width: double.infinity),
+              )
+                  : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.upload_rounded,
+                      size: 28, color: AppColors.textMuted),
+                  const SizedBox(height: 6),
+                  Text('Tap to select new receipt',
+                      style: GoogleFonts.karla(
+                          color: AppColors.textMuted, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+
+          // ── Error ────────────────────────────────────────────────────────
+          if (_uploadError != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Row(children: [
+              const Icon(Icons.error_outline,
+                  color: AppColors.error, size: 14),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(_uploadError!,
+                    style: GoogleFonts.karla(
+                        fontSize: 12, color: AppColors.error)),
+              ),
+            ]),
+          ],
+
+          const SizedBox(height: AppSpacing.md),
+
+          // ── Buttons ──────────────────────────────────────────────────────
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _isUploading ? null : _showSourceSheet,
+                icon:  const Icon(Icons.photo_library_rounded, size: 15),
+                label: Text(
+                  _pickedImage != null ? 'Change' : 'Select',
+                  style: GoogleFonts.karla(fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side:  const BorderSide(color: AppColors.primary),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md)),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton(
+                onPressed: (_pickedImage != null && !_isUploading)
+                    ? _submitReupload : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:         AppColors.error,
+                  foregroundColor:         Colors.white,
+                  disabledBackgroundColor: AppColors.border,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: _isUploading
+                    ? const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(Colors.white)),
+                )
+                    : Text('Re-submit Receipt',
+                    style: GoogleFonts.karla(
+                        fontWeight: FontWeight.w700, fontSize: 13)),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
 }

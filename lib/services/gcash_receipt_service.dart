@@ -2,7 +2,7 @@
  * gcash_receipt_service.dart  —  §1.5 GCash Receipt OCR
  * ───────────────────────────────────────────────────────
  * Calls POST /api/payments/extract-receipt
- * Returns temp Cloudinary URL + extracted GCash ref number.
+ * Returns temp Cloudinary URL + extracted GCash ref number + sent amount.
  *
  * Called BEFORE placing the order — customer must see and confirm
  * the extracted info before tapping "Confirm & Place Order".
@@ -23,22 +23,28 @@ const String _baseUrl = String.fromEnvironment(
 class GcashExtractResult {
   final String  tempUrl;
   final String? gcashRefNumber; // null if OCR couldn't extract
+  final double? gcashAmount;    // null if OCR couldn't extract
   final int     ocrConfidence;
   final bool    refFound;
+  final bool    amountFound;
 
   const GcashExtractResult({
     required this.tempUrl,
     required this.gcashRefNumber,
+    required this.gcashAmount,
     required this.ocrConfidence,
     required this.refFound,
+    required this.amountFound,
   });
 
   factory GcashExtractResult.fromJson(Map<String, dynamic> json) {
     return GcashExtractResult(
       tempUrl:        json['temp_url']         as String,
       gcashRefNumber: json['gcash_ref_number'] as String?,
+      gcashAmount:    (json['gcash_amount']    as num?)?.toDouble(),
       ocrConfidence:  (json['ocr_confidence']  as num?)?.toInt() ?? 0,
       refFound:       json['ref_found']        as bool? ?? false,
+      amountFound:    json['amount_found']     as bool? ?? false,
     );
   }
 }
@@ -59,7 +65,7 @@ class GcashReceiptService {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  /// Upload receipt screenshot and extract GCash ref via backend OCR.
+  /// Upload receipt screenshot and extract GCash ref + amount via backend OCR.
   /// Returns [GcashExtractResult] — caller decides whether to proceed or re-upload.
   Future<GcashExtractResult> extractReceipt({
     required File   imageFile,

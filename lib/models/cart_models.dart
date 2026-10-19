@@ -155,6 +155,7 @@ class PlaceOrderRequest {
   // GCash only — from extract-receipt step
   final String?        gcashReceiptTempUrl;
   final String?        gcashRefNumber;
+  final double?        gcashAmountSent;
   // Per-order delivery pin (chosen / changed at checkout)
   final String?        deliveryAddress;
   final double?        deliveryLatitude;
@@ -166,6 +167,7 @@ class PlaceOrderRequest {
     this.orderNotes,
     this.gcashReceiptTempUrl,
     this.gcashRefNumber,
+    this.gcashAmountSent,
     this.deliveryAddress,
     this.deliveryLatitude,
     this.deliveryLongitude,
@@ -183,6 +185,8 @@ class PlaceOrderRequest {
       'gcash_receipt_temp_url': gcashReceiptTempUrl,
     if (gcashRefNumber != null)
       'gcash_ref_number': gcashRefNumber,
+    if (gcashAmountSent != null)
+      'gcash_amount_sent': gcashAmountSent,
     if (deliveryAddress != null && deliveryAddress!.trim().isNotEmpty)
       'delivery_address': deliveryAddress,
     if (deliveryLatitude != null)

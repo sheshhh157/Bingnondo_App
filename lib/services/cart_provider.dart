@@ -169,6 +169,34 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Called when the user manually corrects the ref number shown in Order Summary.
+  void overrideGcashRef(String ref) {
+    if (_gcashExtractResult == null) return;
+    _gcashExtractResult = GcashExtractResult(
+      tempUrl:       _gcashExtractResult!.tempUrl,
+      gcashRefNumber: ref,
+      gcashAmount:   _gcashExtractResult!.gcashAmount,
+      ocrConfidence: _gcashExtractResult!.ocrConfidence,
+      refFound:      true,
+      amountFound:   _gcashExtractResult!.amountFound,
+    );
+    notifyListeners();
+  }
+
+  /// Called when the user manually corrects the sent amount shown in Order Summary.
+  void overrideGcashAmount(double amount) {
+    if (_gcashExtractResult == null) return;
+    _gcashExtractResult = GcashExtractResult(
+      tempUrl:       _gcashExtractResult!.tempUrl,
+      gcashRefNumber: _gcashExtractResult!.gcashRefNumber,
+      gcashAmount:   amount,
+      ocrConfidence: _gcashExtractResult!.ocrConfidence,
+      refFound:      _gcashExtractResult!.refFound,
+      amountFound:   true,
+    );
+    notifyListeners();
+  }
+
   /// Set / change the delivery pin for this order (checkout page).
   void setDeliveryAddress(PickedAddress address) {
     _deliveryAddress = address;
@@ -269,6 +297,7 @@ class CartProvider extends ChangeNotifier {
         orderNotes:          _orderNotes,
         gcashReceiptTempUrl: _gcashExtractResult?.tempUrl,
         gcashRefNumber:      _gcashExtractResult?.gcashRefNumber,
+        gcashAmountSent:     _gcashExtractResult?.gcashAmount,
         deliveryAddress:     _deliveryAddress?.address,
         deliveryLatitude:    _deliveryAddress?.latitude,
         deliveryLongitude:   _deliveryAddress?.longitude,

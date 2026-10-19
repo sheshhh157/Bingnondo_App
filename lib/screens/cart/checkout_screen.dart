@@ -1,19 +1,23 @@
 /**
  * checkout_screen.dart  —  §1.5 Cart & Checkout
  * ─────────────────────────────────────────────────────────────
- * Steps: Payment → (placing overlay) → Confirmation
+ * Steps: Payment → GCash Detail / COD Detail → (placing overlay) → Confirmation
  *
  * GCash flow:
- *   1. Customer picks payment method → GCash
- *   2. Receipt upload section appears
- *   3. Customer picks screenshot → upload → backend OCR
- *   4. Extracted ref shown → "Confirm & Place Order" unlocks
- *   5. Tap confirm → POST /api/orders (with temp_url + ref)
- *   6. Confirmation screen
+ *   1. Customer picks GCash on Payment Selection screen
+ *   2. GCash Detail screen: shows QR code + upload receipt section
+ *      • Upload screenshot → OCR → ref extracted
+ *      • Order summary shown
+ *      • "Confirm & Place Order" button
+ *   3. Placing overlay
+ *   4. Confirmation screen
  *
  * COD flow:
- *   1. Customer picks COD → "Place Order" button available immediately
- *   2. Confirmation screen
+ *   1. Customer picks COD on Payment Selection screen
+ *   2. COD Detail screen: shows order list + total
+ *   3. "Place Order (COD)" button
+ *   4. Placing overlay
+ *   5. Confirmation screen
  */
 
 import 'dart:io';
@@ -32,6 +36,9 @@ import '../../widgets/app_widgets.dart';
 import '../address/address_picker_screen.dart';
 import '../orders/my_orders_screen.dart';
 
+// ── Internal sub-step enum (within the payment step) ─────────────────────────
+enum _PaymentSubStep { selection, gcashDetail, codDetail }
+
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
 
@@ -43,6 +50,8 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _fadeCtrl;
   late Animation<double>   _fade;
+
+  _PaymentSubStep _subStep = _PaymentSubStep.selection;
 
   @override
   void initState() {
@@ -63,6 +72,19 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     super.dispose();
   }
 
+  void _goToSubStep(_PaymentSubStep sub) {
+    setState(() => _subStep = sub);
+  }
+
+  // Handle system back when in a detail sub-step
+  Future<bool> _onWillPop() async {
+    if (_subStep != _PaymentSubStep.selection) {
+      setState(() => _subStep = _PaymentSubStep.selection);
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -76,17 +98,20 @@ class _CheckoutScreenState extends State<CheckoutScreen>
           return const _PlacingOrderScreen();
         }
 
-        return Scaffold(
-          backgroundColor: AppColors.background,
-          body: SafeArea(
-            child: FadeTransition(
-              opacity: _fade,
-              child: Column(
-                children: [
-                  if (cart.step != CheckoutStep.confirmation)
-                    _buildTopBar(context, cart),
-                  Expanded(child: _buildBody(context, cart)),
-                ],
+        return WillPopScope(
+          onWillPop: _onWillPop,
+          child: Scaffold(
+            backgroundColor: AppColors.background,
+            body: SafeArea(
+              child: FadeTransition(
+                opacity: _fade,
+                child: Column(
+                  children: [
+                    if (cart.step != CheckoutStep.confirmation)
+                      _buildTopBar(context, cart),
+                    Expanded(child: _buildBody(context, cart)),
+                  ],
+                ),
               ),
             ),
           ),
@@ -95,8 +120,20 @@ class _CheckoutScreenState extends State<CheckoutScreen>
     );
   }
 
-  // ─── Top bar (header + step indicator) ─────────────────────────────────────
+  // ─── Top bar ───────────────────────────────────────────────────────────────
   Widget _buildTopBar(BuildContext context, CartProvider cart) {
+    String subtitle;
+    switch (_subStep) {
+      case _PaymentSubStep.gcashDetail:
+        subtitle = 'GCash payment details';
+        break;
+      case _PaymentSubStep.codDetail:
+        subtitle = 'Cash on Delivery details';
+        break;
+      default:
+        subtitle = 'Choose your payment method';
+    }
+
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.primaryDark,
@@ -111,7 +148,13 @@ class _CheckoutScreenState extends State<CheckoutScreen>
             IconButton(
               icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
               color: AppColors.textOnDark,
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                if (_subStep != _PaymentSubStep.selection) {
+                  setState(() => _subStep = _PaymentSubStep.selection);
+                } else {
+                  Navigator.pop(context);
+                }
+              },
             ),
             Expanded(
               child: Column(
@@ -126,7 +169,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                     ),
                   ),
                   Text(
-                    'Review your order and confirm',
+                    subtitle,
                     style: GoogleFonts.karla(
                       fontSize: 12,
                       color: AppColors.textOnDark.withOpacity(0.7),
@@ -146,8 +189,15 @@ class _CheckoutScreenState extends State<CheckoutScreen>
 
   // ─── Step indicator ────────────────────────────────────────────────────────
   Widget _buildStepIndicator(CartProvider cart) {
-    const steps     = ['Payment', 'Done'];
-    final currentIdx = cart.step == CheckoutStep.payment ? 0 : 1;
+    final steps     = ['Payment', 'Details', 'Done'];
+    int currentIdx;
+    if (cart.step == CheckoutStep.confirmation) {
+      currentIdx = 2;
+    } else if (_subStep != _PaymentSubStep.selection) {
+      currentIdx = 1;
+    } else {
+      currentIdx = 0;
+    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -158,7 +208,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
             padding: const EdgeInsets.only(top: 13, left: 10, right: 10),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              width: 44,
+              width: 36,
               height: 2,
               decoration: BoxDecoration(
                 color: (i ~/ 2) < currentIdx
@@ -222,7 +272,18 @@ class _CheckoutScreenState extends State<CheckoutScreen>
   Widget _buildBody(BuildContext context, CartProvider cart) {
     switch (cart.step) {
       case CheckoutStep.payment:
-        return _PaymentStep(cart: cart);
+        switch (_subStep) {
+          case _PaymentSubStep.selection:
+            return _PaymentSelectionStep(
+              cart:         cart,
+              onGcashTap:   () => _goToSubStep(_PaymentSubStep.gcashDetail),
+              onCodTap:     () => _goToSubStep(_PaymentSubStep.codDetail),
+            );
+          case _PaymentSubStep.gcashDetail:
+            return _GcashDetailStep(cart: cart);
+          case _PaymentSubStep.codDetail:
+            return _CodDetailStep(cart: cart);
+        }
       case CheckoutStep.confirmation:
         return _ConfirmationStep(cart: cart);
       default:
@@ -232,17 +293,230 @@ class _CheckoutScreenState extends State<CheckoutScreen>
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Payment Step
+// Step 1 — Payment Method Selection
 // ══════════════════════════════════════════════════════════════════════════════
-class _PaymentStep extends StatefulWidget {
+class _PaymentSelectionStep extends StatelessWidget {
   final CartProvider cart;
-  const _PaymentStep({required this.cart});
+  final VoidCallback onGcashTap;
+  final VoidCallback onCodTap;
+
+  const _PaymentSelectionStep({
+    required this.cart,
+    required this.onGcashTap,
+    required this.onCodTap,
+  });
+
+  Future<void> _changeAddress(BuildContext context) async {
+    final picked = await Navigator.push<PickedAddress>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddressPickerScreen(initial: cart.deliveryAddress),
+      ),
+    );
+    if (picked != null) {
+      cart.setDeliveryAddress(picked);
+    }
+  }
 
   @override
-  State<_PaymentStep> createState() => _PaymentStepState();
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Expanded(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+
+              // ── Deliver to ────────────────────────────────────────────────
+              if (cart.profile != null) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Deliver to', style: AppTextStyles.label(context)),
+                    GestureDetector(
+                      onTap: () => _changeAddress(context),
+                      child: Text(
+                        'CHANGE',
+                        style: GoogleFonts.karla(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.gold,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _DeliverToCard(
+                  profile: cart.profile!,
+                  address: cart.deliveryAddress?.address,
+                  onTap:   () => _changeAddress(context),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _SaveAddressToggle(
+                  value:     cart.saveAddressToProfile,
+                  onChanged: cart.setSaveAddressToProfile,
+                ),
+                const SizedBox(height: AppSpacing.xl),
+              ],
+
+              // ── Error banner ──────────────────────────────────────────────
+              if (cart.error != CartError.none) ...[
+                _ErrorBanner(message: cart.errorMessage ?? 'Something went wrong.'),
+                const SizedBox(height: AppSpacing.md),
+              ],
+
+              // ── Payment method selection ───────────────────────────────────
+              Text('Select Payment Method', style: AppTextStyles.label(context)),
+              const SizedBox(height: AppSpacing.sm),
+
+              // GCash option
+              _PaymentMethodCard(
+                icon:        Icons.account_balance_wallet_rounded,
+                tint:        const Color(0xFF1E88E5),
+                title:       'GCash',
+                description: 'Pay via GCash e-wallet',
+                badge:       'QR PAYMENT',
+                badgeColor:  const Color(0xFF1E88E5),
+                onTap: () {
+                  cart.setPaymentMethod(PaymentMethod.gcash);
+                  onGcashTap();
+                },
+              ),
+
+              const SizedBox(height: AppSpacing.sm),
+
+              // COD option
+              if (cart.canUseCod)
+                _PaymentMethodCard(
+                  icon:        Icons.payments_rounded,
+                  tint:        AppColors.success,
+                  title:       'Cash on Delivery',
+                  description: 'Pay when your order arrives',
+                  badge:       'COD',
+                  badgeColor:  AppColors.success,
+                  onTap: () {
+                    cart.setPaymentMethod(PaymentMethod.cod);
+                    onCodTap();
+                  },
+                )
+              else
+                _CodRestrictedBanner(),
+
+              const SizedBox(height: AppSpacing.xl),
+            ],
+          ),
+        ),
+      ),
+    ]);
+  }
 }
 
-class _PaymentStepState extends State<_PaymentStep> {
+// ── Big tappable payment method card ─────────────────────────────────────────
+class _PaymentMethodCard extends StatelessWidget {
+  final IconData   icon;
+  final Color      tint;
+  final String     title;
+  final String     description;
+  final String     badge;
+  final Color      badgeColor;
+  final VoidCallback onTap;
+
+  const _PaymentMethodCard({
+    required this.icon,
+    required this.tint,
+    required this.title,
+    required this.description,
+    required this.badge,
+    required this.badgeColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color:        AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border:       Border.all(color: AppColors.border),
+          boxShadow:    AppShadows.card,
+        ),
+        child: Row(children: [
+          // Icon
+          Container(
+            width: 52, height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color:        tint.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border:       Border.all(color: tint.withOpacity(0.25)),
+            ),
+            child: Icon(icon, color: tint, size: 26),
+          ),
+          const SizedBox(width: AppSpacing.md),
+
+          // Labels
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Text(title,
+                      style: GoogleFonts.karla(
+                          fontSize:   15,
+                          fontWeight: FontWeight.w700,
+                          color:      AppColors.textPrimary)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color:        badgeColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(4),
+                      border:       Border.all(
+                          color: badgeColor.withOpacity(0.3)),
+                    ),
+                    child: Text(badge,
+                        style: GoogleFonts.karla(
+                            fontSize:      9,
+                            fontWeight:    FontWeight.w800,
+                            color:         badgeColor,
+                            letterSpacing: 0.5)),
+                  ),
+                ]),
+                const SizedBox(height: 2),
+                Text(description,
+                    style: AppTextStyles.bodySmall(context)),
+              ],
+            ),
+          ),
+
+          // Chevron
+          const Icon(Icons.chevron_right_rounded,
+              color: AppColors.textMuted, size: 22),
+        ]),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Step 2a — GCash Detail Screen
+// ══════════════════════════════════════════════════════════════════════════════
+class _GcashDetailStep extends StatefulWidget {
+  final CartProvider cart;
+  const _GcashDetailStep({required this.cart});
+
+  @override
+  State<_GcashDetailStep> createState() => _GcashDetailStepState();
+}
+
+class _GcashDetailStepState extends State<_GcashDetailStep> {
   File?   _pickedImage;
   String? _imageMime;
   bool    _isExtracting = false;
@@ -252,7 +526,6 @@ class _PaymentStepState extends State<_PaymentStep> {
 
   CartProvider get cart => widget.cart;
 
-  // ── Image picker ───────────────────────────────────────────────────────────
   Future<void> _pickImage(ImageSource source) async {
     final picked = await _picker.pickImage(
       source:       source,
@@ -269,7 +542,6 @@ class _PaymentStepState extends State<_PaymentStep> {
       _extractError = null;
     });
 
-    // Clear previous extract result so button locks again
     cart.clearGcashReceipt();
   }
 
@@ -315,20 +587,6 @@ class _PaymentStepState extends State<_PaymentStep> {
     );
   }
 
-  // ── Change delivery pin (checkout) ─────────────────────────────────────────
-  Future<void> _changeAddress() async {
-    final picked = await Navigator.push<PickedAddress>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AddressPickerScreen(initial: cart.deliveryAddress),
-      ),
-    );
-    if (picked != null) {
-      cart.setDeliveryAddress(picked);
-    }
-  }
-
-  // ── Upload + OCR ───────────────────────────────────────────────────────────
   Future<void> _extractReceipt() async {
     if (_pickedImage == null) return;
 
@@ -352,9 +610,8 @@ class _PaymentStepState extends State<_PaymentStep> {
 
   @override
   Widget build(BuildContext context) {
-    final isGcash        = cart.paymentMethod == PaymentMethod.gcash;
-    final extractResult  = cart.gcashExtractResult;
-    final receiptReady   = cart.gcashReceiptReady;
+    final extractResult = cart.gcashExtractResult;
+    final receiptReady  = cart.gcashReceiptReady;
 
     return Column(children: [
       Expanded(
@@ -364,120 +621,402 @@ class _PaymentStepState extends State<_PaymentStep> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              // ── Deliver to ────────────────────────────────────────────────
-              if (cart.profile != null) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Deliver to', style: AppTextStyles.label(context)),
-                    GestureDetector(
-                      onTap: _changeAddress,
-                      child: Text(
-                        'CHANGE',
-                        style: GoogleFonts.karla(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.gold,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                _DeliverToCard(
-                  profile: cart.profile!,
-                  address: cart.deliveryAddress?.address,
-                  onTap: _changeAddress,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                _SaveAddressToggle(
-                  value:     cart.saveAddressToProfile,
-                  onChanged: cart.setSaveAddressToProfile,
-                ),
-                const SizedBox(height: AppSpacing.xl),
-              ],
+              // ── QR Code card ──────────────────────────────────────────────
+              _GcashQrCard(),
+              const SizedBox(height: AppSpacing.xl),
 
-              // ── Error banner ──────────────────────────────────────────────
-              if (cart.error != CartError.none) ...[
-                _ErrorBanner(message: cart.errorMessage ?? 'Something went wrong.'),
-                const SizedBox(height: AppSpacing.md),
-              ],
-
-              // ── Payment method ────────────────────────────────────────────
-              Text('Payment Method', style: AppTextStyles.label(context)),
-              const SizedBox(height: AppSpacing.sm),
-              _PaymentOption(
-                method:   PaymentMethod.gcash,
-                selected: cart.paymentMethod,
-                onTap:    () => cart.setPaymentMethod(PaymentMethod.gcash),
+              // ── Upload receipt ─────────────────────────────────────────────
+              Text('Upload GCash Receipt', style: AppTextStyles.label(context)),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'After sending payment, upload a screenshot of your GCash receipt.',
+                style: AppTextStyles.bodySmall(context),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              if (cart.canUseCod)
-                _PaymentOption(
-                  method:   PaymentMethod.cod,
-                  selected: cart.paymentMethod,
-                  onTap:    () => cart.setPaymentMethod(PaymentMethod.cod),
-                )
-              else
-                _CodRestrictedBanner(),
+              const SizedBox(height: AppSpacing.md),
 
-              // ── GCash receipt section ─────────────────────────────────────
-              if (isGcash) ...[
-                const SizedBox(height: AppSpacing.xl),
-                Text('GCash Receipt', style: AppTextStyles.label(context)),
-                const SizedBox(height: AppSpacing.sm),
-                _GcashInstructionCard(),
-                const SizedBox(height: AppSpacing.md),
-
-                // Image preview / picker
-                _ReceiptPickerCard(
-                  pickedImage:   _pickedImage,
-                  isExtracting:  _isExtracting,
-                  extractError:  _extractError,
-                  extractResult: extractResult,
-                  onPickTap:     _showImageSourceSheet,
-                  onExtractTap:  _pickedImage != null &&
-                      !_isExtracting &&
-                      extractResult == null
-                      ? _extractReceipt
-                      : null,
-                  onReuploadTap: extractResult != null
-                      ? () {
-                    cart.clearGcashReceipt();
-                    setState(() {
-                      _pickedImage  = null;
-                      _extractError = null;
-                    });
-                  }
-                      : null,
-                ),
-              ],
+              _ReceiptPickerCard(
+                pickedImage:   _pickedImage,
+                isExtracting:  _isExtracting,
+                extractError:  _extractError,
+                extractResult: extractResult,
+                onPickTap:     _showImageSourceSheet,
+                onExtractTap:  _pickedImage != null &&
+                    !_isExtracting &&
+                    extractResult == null
+                    ? _extractReceipt
+                    : null,
+                onReuploadTap: extractResult != null
+                    ? () {
+                  cart.clearGcashReceipt();
+                  setState(() {
+                    _pickedImage  = null;
+                    _extractError = null;
+                  });
+                }
+                    : null,
+              ),
 
               const SizedBox(height: AppSpacing.xl),
 
               // ── Order summary ─────────────────────────────────────────────
-              _OrderSummaryCard(cart: cart),
+              Text('Order Summary', style: AppTextStyles.label(context)),
+              const SizedBox(height: AppSpacing.sm),
+              _OrderSummaryCard(cart: cart, extractResult: extractResult),
+
               const SizedBox(height: AppSpacing.md),
+
+              // ── Error ──────────────────────────────────────────────────────
+              if (cart.error != CartError.none) ...[
+                _ErrorBanner(
+                    message: cart.errorMessage ?? 'Something went wrong.'),
+                const SizedBox(height: AppSpacing.md),
+              ],
             ],
           ),
         ),
       ),
 
-      // ── Bottom bar ─────────────────────────────────────────────────────────
+      // ── Bottom bar ────────────────────────────────────────────────────────
       _CheckoutBottomBar(
-        cart:       cart,
-        isEnabled:  receiptReady && !cart.isLoading,
-        isLoading:  cart.isLoading,
-        label:      isGcash
-            ? (extractResult != null
+        cart:      cart,
+        isEnabled: receiptReady && !cart.isLoading,
+        isLoading: cart.isLoading,
+        label:     extractResult != null
             ? 'CONFIRM & PLACE ORDER'
-            : 'UPLOAD RECEIPT FIRST')
-            : 'PLACE ORDER (COD)',
-        onPressed:  () async {
+            : 'UPLOAD RECEIPT FIRST',
+        onPressed: () async {
           final res = await cart.placeOrder();
           if (res != null && context.mounted) {
-            // New order → unlock "Message Staff" immediately
+            context.read<OrdersProvider>().loadOrders();
+          }
+        },
+      ),
+    ]);
+  }
+}
+
+// ── GCash QR Code card ────────────────────────────────────────────────────────
+class _GcashQrCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width:      double.infinity,
+      padding:    const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end:   Alignment.bottomRight,
+          colors: [
+            const Color(0xFF1E88E5).withOpacity(0.08),
+            const Color(0xFF1565C0).withOpacity(0.04),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+            color: const Color(0xFF1E88E5).withOpacity(0.3), width: 1.5),
+        boxShadow: AppShadows.card,
+      ),
+      child: Column(
+        children: [
+          // Header
+          Row(children: [
+            Container(
+              padding:    const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color:  const Color(0xFF1E88E5).withOpacity(0.12),
+                shape:  BoxShape.circle,
+                border: Border.all(
+                    color: const Color(0xFF1E88E5).withOpacity(0.3)),
+              ),
+              child: const Icon(Icons.account_balance_wallet_rounded,
+                  color: Color(0xFF1E88E5), size: 16),
+            ),
+            const SizedBox(width: 8),
+            Text('GCash Payment',
+                style: GoogleFonts.karla(
+                    fontSize:   14,
+                    fontWeight: FontWeight.w800,
+                    color:      const Color(0xFF1E88E5))),
+          ]),
+
+          const SizedBox(height: AppSpacing.md),
+
+          // QR code placeholder — replace the Container below with
+          // Image.asset('assets/images/gcash_qr.png') once you have the real QR.
+          Container(
+            width:  180,
+            height: 180,
+            decoration: BoxDecoration(
+              color:        Colors.white,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                  color: const Color(0xFF1E88E5).withOpacity(0.4), width: 2),
+              boxShadow: [
+                BoxShadow(
+                    color:      Colors.black.withOpacity(0.06),
+                    blurRadius: 8,
+                    offset:     const Offset(0, 2)),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.qr_code_2_rounded,
+                    size: 100, color: AppColors.primaryDark),
+                const SizedBox(height: 8),
+                Text('SCAN TO PAY',
+                    style: GoogleFonts.karla(
+                        fontSize:      10,
+                        fontWeight:    FontWeight.w800,
+                        color:         AppColors.textMuted,
+                        letterSpacing: 1.2)),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSpacing.md),
+
+          // GCash number / name
+          Container(
+            width:   double.infinity,
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+            decoration: BoxDecoration(
+              color:        Colors.white,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                  color: const Color(0xFF1E88E5).withOpacity(0.2)),
+            ),
+            child: Column(children: [
+              Text('Bingnondo Cafe',
+                  style: GoogleFonts.karla(
+                      fontSize:   15,
+                      fontWeight: FontWeight.w800,
+                      color:      AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text('09XX XXX XXXX',
+                  style: GoogleFonts.karla(
+                      fontSize:   13,
+                      color:      AppColors.textSecondary)),
+            ]),
+          ),
+
+          const SizedBox(height: AppSpacing.sm),
+
+          Text(
+            'Send the exact amount shown in your order total below.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.karla(
+                fontSize: 11,
+                color:    AppColors.textMuted,
+                height:   1.4),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Step 2b — COD Detail Screen
+// ══════════════════════════════════════════════════════════════════════════════
+class _CodDetailStep extends StatelessWidget {
+  final CartProvider cart;
+  const _CodDetailStep({required this.cart});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      Expanded(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+
+              // ── COD info banner ───────────────────────────────────────────
+              Container(
+                padding:    const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color:        AppColors.success.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border: Border.all(
+                      color: AppColors.success.withOpacity(0.3)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding:    const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                          color: AppColors.success.withOpacity(0.12),
+                          shape: BoxShape.circle),
+                      child: Icon(Icons.payments_rounded,
+                          color: AppColors.success, size: 18),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Cash on Delivery',
+                              style: GoogleFonts.karla(
+                                  fontSize:   14,
+                                  fontWeight: FontWeight.w800,
+                                  color:      AppColors.success)),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Please prepare the exact amount. '
+                                'Our delivery rider will collect payment upon arrival.',
+                            style: GoogleFonts.karla(
+                                fontSize: 12,
+                                color:    AppColors.textSecondary,
+                                height:   1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: AppSpacing.xl),
+
+              // ── Order list ────────────────────────────────────────────────
+              Text('Your Order', style: AppTextStyles.label(context)),
+              const SizedBox(height: AppSpacing.sm),
+
+              Container(
+                padding:    const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color:        AppColors.card,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border:       Border.all(color: AppColors.border),
+                  boxShadow:    AppShadows.card,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ...cart.items.map((item) => Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                      child: Row(children: [
+                        FoodThumb(
+                            url: item.photoUrl, size: 44, radius: AppRadius.sm),
+                        const SizedBox(width: AppSpacing.sm),
+                        // Quantity badge
+                        Container(
+                          width: 28, height: 28,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color:        AppColors.gold.withOpacity(0.12),
+                            shape:        BoxShape.circle,
+                            border: Border.all(
+                                color: AppColors.gold.withOpacity(0.4)),
+                          ),
+                          child: Text('${item.quantity}',
+                              style: GoogleFonts.karla(
+                                  fontSize:   12,
+                                  fontWeight: FontWeight.w800,
+                                  color:      AppColors.gold)),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.name,
+                                  style: AppTextStyles.bodyMedium(context)
+                                      .copyWith(fontSize: 13),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis),
+                              Text('₱${item.price.toStringAsFixed(2)} each',
+                                  style: AppTextStyles.bodySmall(context)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Text('₱${item.subtotal.toStringAsFixed(2)}',
+                            style: GoogleFonts.karla(
+                                fontSize:   14,
+                                fontWeight: FontWeight.w700,
+                                color:      AppColors.textPrimary)),
+                      ]),
+                    )),
+
+                    const Divider(color: AppColors.border, height: 1),
+                    const SizedBox(height: AppSpacing.md),
+
+                    // Total
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total to Pay',
+                            style: GoogleFonts.karla(
+                                fontSize:   14,
+                                fontWeight: FontWeight.w700,
+                                color:      AppColors.textPrimary)),
+                        Text('₱${cart.totalAmount.toStringAsFixed(2)}',
+                            style: GoogleFonts.playfairDisplaySc(
+                                fontSize:   22,
+                                fontWeight: FontWeight.w700,
+                                color:      AppColors.primary)),
+                      ],
+                    ),
+
+                    const SizedBox(height: AppSpacing.sm),
+
+                    // Reminder chip
+                    Container(
+                      width:   double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                      decoration: BoxDecoration(
+                        color:        AppColors.gold.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        border: Border.all(
+                            color: AppColors.gold.withOpacity(0.25)),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.info_outline_rounded,
+                            color: AppColors.gold, size: 14),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Please prepare exact change.',
+                            style: GoogleFonts.karla(
+                                fontSize: 11,
+                                color:    AppColors.gold,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: AppSpacing.md),
+
+              // ── Error ──────────────────────────────────────────────────────
+              if (cart.error != CartError.none) ...[
+                _ErrorBanner(
+                    message: cart.errorMessage ?? 'Something went wrong.'),
+                const SizedBox(height: AppSpacing.md),
+              ],
+            ],
+          ),
+        ),
+      ),
+
+      // ── Bottom bar ────────────────────────────────────────────────────────
+      _CheckoutBottomBar(
+        cart:      cart,
+        isEnabled: !cart.isLoading,
+        isLoading: cart.isLoading,
+        label:     'PLACE ORDER (COD)',
+        onPressed: () async {
+          final res = await cart.placeOrder();
+          if (res != null && context.mounted) {
             context.read<OrdersProvider>().loadOrders();
           }
         },
@@ -487,82 +1026,7 @@ class _PaymentStepState extends State<_PaymentStep> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GCash Instruction Card
-// ══════════════════════════════════════════════════════════════════════════════
-class _GcashInstructionCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding:    const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color:        AppColors.surfaceWarm,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border:       Border.all(color: AppColors.gold.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Icon(Icons.info_outline_rounded,
-                color: AppColors.gold, size: 16),
-            const SizedBox(width: 6),
-            Text('How to pay',
-                style: GoogleFonts.karla(
-                    fontWeight: FontWeight.w700,
-                    color:      AppColors.primary,
-                    fontSize:   13)),
-          ]),
-          const SizedBox(height: AppSpacing.sm),
-          _InstructionStep(n: '1', text: 'Send GCash payment to our number.'),
-          _InstructionStep(n: '2', text: 'Screenshot your GCash receipt.'),
-          _InstructionStep(n: '3', text: 'Upload the screenshot below.'),
-          _InstructionStep(n: '4', text: 'We extract your ref number, then you confirm.'),
-        ],
-      ),
-    );
-  }
-}
-
-class _InstructionStep extends StatelessWidget {
-  final String n;
-  final String text;
-  const _InstructionStep({required this.n, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 18, height: 18,
-            decoration: const BoxDecoration(
-                color: AppColors.gold, shape: BoxShape.circle),
-            child: Center(
-              child: Text(n,
-                  style: GoogleFonts.karla(
-                      fontSize:   10,
-                      fontWeight: FontWeight.w900,
-                      color:      AppColors.primaryDark)),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(text,
-                style: GoogleFonts.karla(
-                    fontSize: 12,
-                    color:    AppColors.textSecondary,
-                    height:   1.4)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// Receipt Picker Card
+// Receipt Picker Card (GCash upload)
 // ══════════════════════════════════════════════════════════════════════════════
 class _ReceiptPickerCard extends StatelessWidget {
   final File?               pickedImage;
@@ -594,9 +1058,7 @@ class _ReceiptPickerCard extends StatelessWidget {
         color:        AppColors.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
-          color: isSuccess
-              ? Colors.green.shade300
-              : AppColors.border,
+          color: isSuccess ? Colors.green.shade300 : AppColors.border,
           width: isSuccess ? 2 : 1,
         ),
         boxShadow: AppShadows.card,
@@ -609,8 +1071,11 @@ class _ReceiptPickerCard extends StatelessWidget {
           GestureDetector(
             onTap: isExtracting || isSuccess ? null : onPickTap,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              height:   180,
+              duration:    const Duration(milliseconds: 200),
+              // Fixed height only for the empty placeholder; when image is
+              // loaded, let it expand naturally so nothing is cropped.
+              height:      pickedImage != null ? null : 160,
+              width:       double.infinity,
               decoration: BoxDecoration(
                 color:        AppColors.background,
                 borderRadius: BorderRadius.circular(AppRadius.md),
@@ -626,8 +1091,11 @@ class _ReceiptPickerCard extends StatelessWidget {
               child: pickedImage != null
                   ? ClipRRect(
                 borderRadius: BorderRadius.circular(AppRadius.md - 1),
-                child: Image.file(pickedImage!,
-                    fit: BoxFit.cover, width: double.infinity),
+                child: Image.file(
+                  pickedImage!,
+                  fit:   BoxFit.contain, // show full image, no cropping
+                  width: double.infinity,
+                ),
               )
                   : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -664,7 +1132,6 @@ class _ReceiptPickerCard extends StatelessWidget {
           // ── Action buttons ─────────────────────────────────────────────────
           if (!isSuccess) ...[
             Row(children: [
-              // Select / change image
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: isExtracting ? null : onPickTap,
@@ -682,7 +1149,6 @@ class _ReceiptPickerCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              // Extract / scan
               Expanded(
                 flex: 2,
                 child: ElevatedButton(
@@ -725,7 +1191,6 @@ class _ReceiptPickerCard extends StatelessWidget {
               ),
             ]),
           ] else ...[
-            // Re-upload button
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -755,6 +1220,9 @@ class _ExtractResultBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasRef    = result.refFound    && result.gcashRefNumber != null;
+    final hasAmount = result.amountFound && result.gcashAmount    != null;
+
     return Container(
       padding:    const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -765,46 +1233,132 @@ class _ExtractResultBanner extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ────────────────────────────────────────────────────────
           Row(children: [
             Icon(Icons.check_circle_rounded,
                 color: Colors.green.shade600, size: 16),
             const SizedBox(width: 6),
             Text(
-              result.refFound
-                  ? 'Reference number extracted!'
-                  : 'Receipt uploaded',
+              'Receipt scanned!',
               style: GoogleFonts.karla(
                   fontWeight: FontWeight.w700,
                   color:      Colors.green.shade700,
                   fontSize:   13),
             ),
           ]),
-          if (result.refFound) ...[
-            const SizedBox(height: 6),
-            Text('Ref No.',
-                style: GoogleFonts.karla(
-                    fontSize: 11, color: Colors.green.shade600)),
-            Text(
-              result.gcashRefNumber!,
-              style: GoogleFonts.karla(
-                  fontSize:      18,
-                  fontWeight:    FontWeight.w900,
-                  color:         Colors.green.shade800,
-                  letterSpacing: 1.2),
-            ),
-          ] else ...[
-            const SizedBox(height: 4),
-            Text(
-              'We couldn\'t read the ref number clearly. '
-                  'Our staff will verify your receipt manually.',
-              style: GoogleFonts.karla(
-                  fontSize: 12,
-                  color:    Colors.green.shade700,
-                  height:   1.4),
+
+          const SizedBox(height: AppSpacing.md),
+
+          // ── Ref number row ────────────────────────────────────────────────
+          _ExtractRow(
+            label:    'Reference No.',
+            value:    hasRef ? result.gcashRefNumber! : null,
+            fallback: 'Not found — staff will verify',
+            isLarge:  true,
+          ),
+
+          const SizedBox(height: AppSpacing.sm),
+
+          // ── Amount row ────────────────────────────────────────────────────
+          _ExtractRow(
+            label:    'Amount Sent',
+            value:    hasAmount
+                ? '₱${result.gcashAmount!.toStringAsFixed(2)}'
+                : null,
+            fallback: 'Not found — staff will verify',
+            isLarge:  true,
+          ),
+
+          // ── Warning if either is missing ──────────────────────────────────
+          if (!hasRef || !hasAmount) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm, vertical: 6),
+              decoration: BoxDecoration(
+                color:        Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      color: Colors.orange.shade600, size: 13),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Some details couldn\'t be read clearly. '
+                          'You may still proceed — our staff will verify manually.',
+                      style: GoogleFonts.karla(
+                          fontSize: 11,
+                          color:    Colors.orange.shade700,
+                          height:   1.4),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+// ── Single extracted field row ────────────────────────────────────────────────
+class _ExtractRow extends StatelessWidget {
+  final String  label;
+  final String? value;
+  final String  fallback;
+  final bool    isLarge;
+
+  const _ExtractRow({
+    required this.label,
+    required this.value,
+    required this.fallback,
+    this.isLarge = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final found = value != null;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          found ? Icons.check_rounded : Icons.remove_rounded,
+          size:  14,
+          color: found ? Colors.green.shade600 : Colors.orange.shade400,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: GoogleFonts.karla(
+                      fontSize: 11,
+                      color:    found
+                          ? Colors.green.shade600
+                          : Colors.orange.shade600)),
+              Text(
+                found ? value! : fallback,
+                style: found
+                    ? GoogleFonts.karla(
+                    fontSize:      isLarge ? 17 : 14,
+                    fontWeight:    FontWeight.w900,
+                    color:         Colors.green.shade800,
+                    letterSpacing: isLarge ? 0.8 : 0)
+                    : GoogleFonts.karla(
+                    fontSize: 12,
+                    color:    Colors.orange.shade700,
+                    fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -828,8 +1382,7 @@ class _ConfirmationStep extends StatelessWidget {
 
         // ── Success badge ────────────────────────────────────────────────
         Container(
-          width: 104,
-          height: 104,
+          width: 104, height: 104,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: AppColors.gold.withOpacity(0.12),
@@ -838,11 +1391,10 @@ class _ConfirmationStep extends StatelessWidget {
           ),
           child: Center(
             child: Container(
-              width: 72,
-              height: 72,
+              width: 72, height: 72,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.gold,
+                shape:     BoxShape.circle,
+                color:     AppColors.gold,
                 boxShadow: AppShadows.goldGlow,
               ),
               child: const Icon(Icons.check_rounded,
@@ -914,6 +1466,25 @@ class _ConfirmationStep extends StatelessWidget {
                   value: cart.deliveryAddress!.address,
                 ),
               ],
+
+              // ── GCash ref + amount — above Total ─────────────────────
+              if (isGcash && cart.gcashExtractResult != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _ConfirmRow(
+                  label: 'GCash Ref No.',
+                  value: cart.gcashExtractResult!.refFound
+                      ? cart.gcashExtractResult!.gcashRefNumber!
+                      : 'To be verified',
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _ConfirmRow(
+                  label: 'Amount Sent',
+                  value: cart.gcashExtractResult!.amountFound
+                      ? '₱${cart.gcashExtractResult!.gcashAmount!.toStringAsFixed(2)}'
+                      : 'To be verified',
+                ),
+              ],
+
               const SizedBox(height: AppSpacing.md),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -925,67 +1496,16 @@ class _ConfirmationStep extends StatelessWidget {
                       color: AppColors.primary.withOpacity(0.12)),
                 ),
                 child: _ConfirmRow(
-                  label: 'Total',
-                  value: '₱${order.totalAmount.toStringAsFixed(2)}',
+                  label:     'Total',
+                  value:     '₱${order.totalAmount.toStringAsFixed(2)}',
                   emphasize: true,
                 ),
               ),
+
               const SizedBox(height: AppSpacing.md),
               const ChineseDivider(),
             ]),
           ),
-          const SizedBox(height: AppSpacing.md),
-
-          // GCash ref summary
-          if (isGcash && cart.gcashExtractResult != null) ...[
-            Container(
-              padding:    const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color:        AppColors.surfaceWarm,
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                border:       Border.all(color: AppColors.border),
-              ),
-              child: Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withOpacity(0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.receipt_long_rounded,
-                      color: AppColors.gold, size: 16),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: cart.gcashExtractResult!.refFound
-                      ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('GCash Ref No.',
-                          style: GoogleFonts.karla(
-                              fontSize: 11,
-                              color:    AppColors.textMuted)),
-                      Text(
-                        cart.gcashExtractResult!.gcashRefNumber!,
-                        style: GoogleFonts.karla(
-                            fontSize:   15,
-                            fontWeight: FontWeight.w900,
-                            color:      AppColors.textPrimary),
-                      ),
-                    ],
-                  )
-                      : Text(
-                    'Staff will verify your receipt manually.',
-                    style: GoogleFonts.karla(
-                        fontSize: 12,
-                        color:    AppColors.textSecondary,
-                        height:   1.4),
-                  ),
-                ),
-              ]),
-            ),
-            const SizedBox(height: AppSpacing.md),
-          ],
         ],
 
         const SizedBox(height: AppSpacing.lg),
@@ -998,7 +1518,7 @@ class _ConfirmationStep extends StatelessWidget {
             Navigator.push(
               context,
               PageRouteBuilder(
-                pageBuilder:     (_, a, __) => const MyOrdersScreen(),
+                pageBuilder:        (_, a, __) => const MyOrdersScreen(),
                 transitionsBuilder: (_, a, __, child) => SlideTransition(
                   position: Tween<Offset>(
                     begin: const Offset(0, 1),
@@ -1030,7 +1550,7 @@ class _ConfirmationStep extends StatelessWidget {
 class _ConfirmRow extends StatelessWidget {
   final String label;
   final String value;
-  final bool emphasize;
+  final bool   emphasize;
   const _ConfirmRow({
     required this.label,
     required this.value,
@@ -1174,8 +1694,8 @@ class _CheckoutBottomBar extends StatelessWidget {
 
 class _DeliverToCard extends StatelessWidget {
   final CustomerProfile profile;
-  final String? address;
-  final VoidCallback? onTap;
+  final String?         address;
+  final VoidCallback?   onTap;
   const _DeliverToCard({required this.profile, this.address, this.onTap});
 
   @override
@@ -1233,9 +1753,8 @@ class _DeliverToCard extends StatelessWidget {
   }
 }
 
-// ── "Save as my default address" toggle ───────────────────────────────────────
 class _SaveAddressToggle extends StatelessWidget {
-  final bool value;
+  final bool             value;
   final ValueChanged<bool> onChanged;
   const _SaveAddressToggle({required this.value, required this.onChanged});
 
@@ -1246,14 +1765,13 @@ class _SaveAddressToggle extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 24,
-            height: 24,
+            width: 24, height: 24,
             child: Checkbox(
-              value: value,
+              value:     value,
               onChanged: (v) => onChanged(v ?? false),
-              activeColor: AppColors.primary,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
+              activeColor:              AppColors.primary,
+              materialTapTargetSize:    MaterialTapTargetSize.shrinkWrap,
+              visualDensity:            VisualDensity.compact,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4)),
             ),
@@ -1323,106 +1841,81 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-class _PaymentOption extends StatelessWidget {
-  final PaymentMethod method;
-  final PaymentMethod selected;
-  final VoidCallback  onTap;
-  const _PaymentOption({
-    required this.method,
-    required this.selected,
-    required this.onTap,
+class _OrderSummaryCard extends StatefulWidget {
+  final CartProvider       cart;
+  final GcashExtractResult? extractResult;
+
+  const _OrderSummaryCard({
+    required this.cart,
+    this.extractResult,
   });
 
-  IconData get _icon => method == PaymentMethod.gcash
-      ? Icons.account_balance_wallet_rounded
-      : Icons.payments_rounded;
-
-  Color get _tint => method == PaymentMethod.gcash
-      ? const Color(0xFF1E88E5)
-      : AppColors.success;
-
   @override
-  Widget build(BuildContext context) {
-    final isSelected = method == selected;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration:   const Duration(milliseconds: 200),
-        padding:    const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primary.withOpacity(0.05)
-              : AppColors.card,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-            width: isSelected ? 2 : 1,
-          ),
-          boxShadow: AppShadows.card,
-        ),
-        child: Row(children: [
-          // ── Method glyph ─────────────────────────────────────────────
-          Container(
-            width: 42,
-            height: 42,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: _tint.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: _tint.withOpacity(0.25)),
-            ),
-            child: Icon(_icon, color: _tint, size: 22),
-          ),
-          const SizedBox(width: AppSpacing.md),
-
-          // ── Label + description ──────────────────────────────────────
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(method.label,
-                    style: GoogleFonts.karla(
-                        fontSize:   15,
-                        fontWeight: FontWeight.w700,
-                        color: isSelected
-                            ? AppColors.primary
-                            : AppColors.textPrimary)),
-                const SizedBox(height: 2),
-                Text(method.description,
-                    style: AppTextStyles.bodySmall(context)),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-
-          // ── Radio ────────────────────────────────────────────────────
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: 22, height: 22,
-            decoration: BoxDecoration(
-              shape:  BoxShape.circle,
-              border: Border.all(
-                  color: isSelected ? AppColors.primary : AppColors.border,
-                  width: 2),
-              color: isSelected ? AppColors.primary : Colors.transparent,
-            ),
-            child: isSelected
-                ? const Icon(Icons.check_rounded,
-                size: 13, color: AppColors.textOnDark)
-                : null,
-          ),
-        ]),
-      ),
-    );
-  }
+  State<_OrderSummaryCard> createState() => _OrderSummaryCardState();
 }
 
-class _OrderSummaryCard extends StatelessWidget {
-  final CartProvider cart;
-  const _OrderSummaryCard({required this.cart});
+class _OrderSummaryCardState extends State<_OrderSummaryCard> {
+  // Local editable copies — only active when OCR found the value
+  late TextEditingController _refCtrl;
+  late TextEditingController _amountCtrl;
+
+  bool _editingRef    = false;
+  bool _editingAmount = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refCtrl    = TextEditingController(
+        text: widget.extractResult?.gcashRefNumber ?? '');
+    _amountCtrl = TextEditingController(
+        text: widget.extractResult?.gcashAmount != null
+            ? widget.extractResult!.gcashAmount!.toStringAsFixed(2)
+            : '');
+  }
+
+  @override
+  void didUpdateWidget(_OrderSummaryCard old) {
+    super.didUpdateWidget(old);
+    // Sync controllers when extractResult changes (new scan)
+    final newRef    = widget.extractResult?.gcashRefNumber ?? '';
+    final newAmount = widget.extractResult?.gcashAmount != null
+        ? widget.extractResult!.gcashAmount!.toStringAsFixed(2)
+        : '';
+    if (old.extractResult != widget.extractResult) {
+      _refCtrl.text    = newRef;
+      _amountCtrl.text = newAmount;
+      _editingRef      = false;
+      _editingAmount   = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _refCtrl.dispose();
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
+  // Commit edits back to the cart provider
+  void _commitRef() {
+    final val = _refCtrl.text.trim();
+    if (val.isNotEmpty) widget.cart.overrideGcashRef(val);
+    setState(() => _editingRef = false);
+  }
+
+  void _commitAmount() {
+    final val = double.tryParse(_amountCtrl.text.trim());
+    if (val != null) widget.cart.overrideGcashAmount(val);
+    setState(() => _editingAmount = false);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final extract   = widget.extractResult;
+    final hasRef    = extract != null && extract.refFound;
+    final hasAmount = extract != null && extract.amountFound;
+    final hasAny    = extract != null;
+
     return Container(
       padding:    const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -1434,15 +1927,22 @@ class _OrderSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+
+          // ── Header ──────────────────────────────────────────────────────
           Row(children: [
             Text('Order Summary', style: AppTextStyles.label(context)),
             const Spacer(),
-            Text('${cart.totalItemCount} '
-                '${cart.totalItemCount == 1 ? 'item' : 'items'}',
-                style: AppTextStyles.caption(context)),
+            Text(
+              '${widget.cart.totalItemCount} '
+                  '${widget.cart.totalItemCount == 1 ? 'item' : 'items'}',
+              style: AppTextStyles.caption(context),
+            ),
           ]),
+
           const SizedBox(height: AppSpacing.md),
-          ...cart.items.map((item) => Padding(
+
+          // ── Items list ───────────────────────────────────────────────────
+          ...widget.cart.items.map((item) => Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: Row(children: [
               FoodThumb(url: item.photoUrl, size: 40, radius: AppRadius.sm),
@@ -1471,20 +1971,244 @@ class _OrderSummaryCard extends StatelessWidget {
                       color:      AppColors.textPrimary)),
             ]),
           )),
+
           const Divider(color: AppColors.border),
+
+          // ── Total ────────────────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Total', style: AppTextStyles.label(context)),
-              Text('₱${cart.totalAmount.toStringAsFixed(2)}',
+              Text('₱${widget.cart.totalAmount.toStringAsFixed(2)}',
                   style: GoogleFonts.playfairDisplaySc(
                       fontSize:   16,
                       fontWeight: FontWeight.w700,
                       color:      AppColors.primary)),
             ],
           ),
+
+          // ── GCash fields — only shown after a scan ────────────────────
+          if (hasAny) ...[
+            const SizedBox(height: AppSpacing.sm),
+            const Divider(color: AppColors.border),
+            const SizedBox(height: AppSpacing.sm),
+
+            // Reference Number
+            _EditableSummaryField(
+              label:       'Reference No.',
+              controller:  _refCtrl,
+              isEditable:  hasRef,
+              isEditing:   _editingRef,
+              placeholder: hasRef ? null : 'Not detected',
+              icon:        Icons.tag_rounded,
+              onEditTap:   hasRef
+                  ? () => setState(() => _editingRef = true)
+                  : null,
+              onDone:      _commitRef,
+              onCancel:    () {
+                _refCtrl.text =
+                    extract?.gcashRefNumber ?? '';
+                setState(() => _editingRef = false);
+              },
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+              ],
+            ),
+
+            const SizedBox(height: AppSpacing.sm),
+
+            // Amount Sent
+            _EditableSummaryField(
+              label:       'Amount Sent',
+              controller:  _amountCtrl,
+              isEditable:  hasAmount,
+              isEditing:   _editingAmount,
+              placeholder: hasAmount ? null : 'Not detected',
+              icon:        Icons.payments_rounded,
+              prefix:      '₱ ',
+              onEditTap:   hasAmount
+                  ? () => setState(() => _editingAmount = true)
+                  : null,
+              onDone:      _commitAmount,
+              onCancel:    () {
+                _amountCtrl.text = extract?.gcashAmount != null
+                    ? extract!.gcashAmount!.toStringAsFixed(2)
+                    : '';
+                setState(() => _editingAmount = false);
+              },
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+              ],
+            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+// ── Single editable field row ─────────────────────────────────────────────────
+class _EditableSummaryField extends StatelessWidget {
+  final String                    label;
+  final TextEditingController     controller;
+  final bool                      isEditable;   // OCR found the value
+  final bool                      isEditing;    // currently in edit mode
+  final String?                   placeholder;  // shown when not found
+  final String?                   prefix;       // e.g. "₱ "
+  final IconData                  icon;
+  final VoidCallback?             onEditTap;
+  final VoidCallback              onDone;
+  final VoidCallback              onCancel;
+  final TextInputType             keyboardType;
+  final List<TextInputFormatter>  inputFormatters;
+
+  const _EditableSummaryField({
+    required this.label,
+    required this.controller,
+    required this.isEditable,
+    required this.isEditing,
+    required this.icon,
+    required this.onDone,
+    required this.onCancel,
+    required this.keyboardType,
+    required this.inputFormatters,
+    this.placeholder,
+    this.prefix,
+    this.onEditTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Icon
+        Container(
+          width: 30, height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isEditable
+                ? AppColors.primary.withOpacity(0.08)
+                : AppColors.border.withOpacity(0.5),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon,
+              size:  14,
+              color: isEditable ? AppColors.primary : AppColors.textMuted),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+
+        // Label + value/input
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: GoogleFonts.karla(
+                      fontSize: 10,
+                      color:    AppColors.textMuted,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3)),
+              const SizedBox(height: 2),
+              if (isEditing) ...[
+                // ── Edit mode ────────────────────────────────────────────
+                SizedBox(
+                  height: 36,
+                  child: TextField(
+                    controller:      controller,
+                    autofocus:       true,
+                    keyboardType:    keyboardType,
+                    inputFormatters: inputFormatters,
+                    style: GoogleFonts.karla(
+                        fontSize:   14,
+                        fontWeight: FontWeight.w700,
+                        color:      AppColors.textPrimary),
+                    decoration: InputDecoration(
+                      prefixText:     prefix,
+                      prefixStyle:    GoogleFonts.karla(
+                          fontSize:   14,
+                          fontWeight: FontWeight.w700,
+                          color:      AppColors.textPrimary),
+                      isDense:        true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 8),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(6),
+                          borderSide: const BorderSide(
+                              color: AppColors.primary)),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(6),
+                          borderSide: const BorderSide(
+                              color: AppColors.primary, width: 2)),
+                    ),
+                    onSubmitted: (_) => onDone(),
+                  ),
+                ),
+              ] else ...[
+                // ── Display mode ─────────────────────────────────────────
+                Text(
+                  isEditable
+                      ? (prefix ?? '') + controller.text
+                      : placeholder ?? '—',
+                  style: isEditable
+                      ? GoogleFonts.karla(
+                      fontSize:   14,
+                      fontWeight: FontWeight.w800,
+                      color:      AppColors.textPrimary,
+                      letterSpacing: 0.4)
+                      : GoogleFonts.karla(
+                      fontSize:  13,
+                      color:     AppColors.textMuted,
+                      fontStyle: FontStyle.italic),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        // Action buttons
+        if (isEditing) ...[
+          // ── Confirm / Cancel ─────────────────────────────────────────
+          IconButton(
+            onPressed:  onDone,
+            icon:       const Icon(Icons.check_rounded),
+            color:      AppColors.success,
+            iconSize:   20,
+            padding:    EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            tooltip:    'Save',
+          ),
+          IconButton(
+            onPressed:  onCancel,
+            icon:       const Icon(Icons.close_rounded),
+            color:      AppColors.textMuted,
+            iconSize:   20,
+            padding:    EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            tooltip:    'Cancel',
+          ),
+        ] else if (isEditable) ...[
+          // ── Edit pencil ───────────────────────────────────────────────
+          IconButton(
+            onPressed:  onEditTap,
+            icon:       const Icon(Icons.edit_rounded),
+            color:      AppColors.primary,
+            iconSize:   16,
+            padding:    EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            tooltip:    'Edit',
+          ),
+        ] else ...[
+          // ── Locked ────────────────────────────────────────────────────
+          const SizedBox(
+            width: 32, height: 32,
+            child: Icon(Icons.lock_outline_rounded,
+                size: 14, color: AppColors.textMuted),
+          ),
+        ],
+      ],
     );
   }
 }
