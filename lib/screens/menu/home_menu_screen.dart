@@ -35,28 +35,21 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   final ScrollController _scrollController = ScrollController();
 
   double _collapseRatio = 0.0;
+
+  late AnimationController _badgeBounceCtrl;
+  late Animation<double> _badgeBounce;
+  int _prevCartCount = 0;
   static const double _expandedHeaderH = 140.0;
   static const double _collapsedHeaderH = 75.0; // Increased to prevent overflow
   static const double _scrollTriggerH =
       _expandedHeaderH - _collapsedHeaderH;
 
-  late AnimationController _fabPulseCtrl;
-  late Animation<double> _fabPulse;
 
-  late AnimationController _badgeBounceCtrl;
-  late Animation<double> _badgeBounce;
-  int _prevCartCount = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 1, vsync: this);
-
-    _fabPulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1400))
-      ..repeat(reverse: true);
-    _fabPulse = Tween<double>(begin: 1.0, end: 1.08).animate(
-        CurvedAnimation(parent: _fabPulseCtrl, curve: Curves.easeInOut));
 
     _badgeBounceCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 300));
@@ -102,7 +95,6 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    _fabPulseCtrl.dispose();
     _badgeBounceCtrl.dispose();
     _scrollController
       ..removeListener(_onScroll)
@@ -220,7 +212,6 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
           );
         },
       ),
-      floatingActionButton: _buildFab(context),
     );
   }
 
@@ -258,7 +249,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     final featured = <MenuItem>[];
     for (final cat in cats) {
       final available =
-          menuProvider.itemsForCategory(cat.id).where((i) => i.isAvailable);
+      menuProvider.itemsForCategory(cat.id).where((i) => i.isAvailable);
       if (available.isNotEmpty) featured.add(available.first);
       if (featured.length >= 6) break;
     }
@@ -397,7 +388,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             itemCount: 3,
             separatorBuilder: (_, __) =>
-                const SizedBox(width: AppSpacing.sm + 2),
+            const SizedBox(width: AppSpacing.sm + 2),
             itemBuilder: (_, __) => const SizedBox(
               width: _kCategoryCardW,
               child: _ShimmerBox(radius: AppRadius.lg),
@@ -433,67 +424,9 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     );
   }
 
-  Widget _buildFab(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: ScaleTransition(
-        scale: _fabPulse,
-        child: GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (_, anim, __) => const ChatbotScreen(),
-              transitionsBuilder: (_, anim, __, child) => SlideTransition(
-                position: Tween<Offset>(
-                    begin: const Offset(0, 1), end: Offset.zero)
-                    .animate(CurvedAnimation(
-                    parent: anim, curve: Curves.easeOutCubic)),
-                child: child,
-              ),
-              transitionDuration: const Duration(milliseconds: 400),
-            ),
-          ),
-          child: Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: AppColors.primaryDark,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.gold, width: 2),
-              boxShadow: AppShadows.goldGlow,
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                // Main Image with NO fallback painter to test visibility
-                ClipOval(
-                  child: Image.asset(
-                    'assets/images/ndo_bot.png',
-                    width: 44,
-                    height: 44,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                        color: AppColors.gold,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.primaryDark, width: 1.5)
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+
+
+
 
   void _showItemDetail(BuildContext context, MenuItem item) {
     showModalBottomSheet(
@@ -985,12 +918,12 @@ class _CategoryChipState extends State<_CategoryChip> {
         ),
         boxShadow: isSelected
             ? [
-                BoxShadow(
-                  color: AppColors.gold.withOpacity(0.35),
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                ),
-              ]
+          BoxShadow(
+            color: AppColors.gold.withOpacity(0.35),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ]
             : const [],
       ),
       child: Row(
@@ -1975,61 +1908,61 @@ class _ProfileSheet extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(AppRadius.pill)),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text('Account', style: AppTextStyles.display2(context)),
-          const SizedBox(height: AppSpacing.lg),
-          const ChineseDivider(),
-          const SizedBox(height: AppSpacing.sm),
-          ListTile(
-            leading: const Icon(Icons.receipt_long_outlined,
-                color: AppColors.gold),
-            title:
-            Text('My Orders', style: AppTextStyles.bodyLarge(context)),
-            subtitle: Text('Track your active order',
-                style: AppTextStyles.bodySmall(context)),
-            onTap: onMyOrders,
-          ),
-          ListTile(
-            enabled: hasActiveOrder,
-            leading: Icon(
-              Icons.chat_bubble_outline_rounded,
-              color: hasActiveOrder ? AppColors.gold : AppColors.textMuted,
-            ),
-            title: Text(
-              'Message Staff',
-              style: AppTextStyles.bodyLarge(context).copyWith(
-                color: hasActiveOrder ? AppColors.textPrimary : AppColors.textMuted,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(AppRadius.pill)),
               ),
             ),
-            subtitle: Text(
-              hasActiveOrder ? 'Chat about your current order' : 'Available when you have an order',
-              style: AppTextStyles.bodySmall(context),
+            const SizedBox(height: AppSpacing.lg),
+            Text('Account', style: AppTextStyles.display2(context)),
+            const SizedBox(height: AppSpacing.lg),
+            const ChineseDivider(),
+            const SizedBox(height: AppSpacing.sm),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined,
+                  color: AppColors.gold),
+              title:
+              Text('My Orders', style: AppTextStyles.bodyLarge(context)),
+              subtitle: Text('Track your active order',
+                  style: AppTextStyles.bodySmall(context)),
+              onTap: onMyOrders,
             ),
-            onTap: hasActiveOrder ? onMessageStaff : null,
-          ),
-          ListTile(
-            leading:
-            const Icon(Icons.settings_outlined, color: AppColors.gold),
-            title: Text('Account Settings',
-                style: AppTextStyles.bodyLarge(context)),
-            subtitle: Text('Profile, password & payment',
-                style: AppTextStyles.bodySmall(context)),
-            onTap: onSettings,
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          GoldOutlineButton(label: 'SIGN OUT', onPressed: onLogout),
-        ],
+            ListTile(
+              enabled: hasActiveOrder,
+              leading: Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: hasActiveOrder ? AppColors.gold : AppColors.textMuted,
+              ),
+              title: Text(
+                'Message Staff',
+                style: AppTextStyles.bodyLarge(context).copyWith(
+                  color: hasActiveOrder ? AppColors.textPrimary : AppColors.textMuted,
+                ),
+              ),
+              subtitle: Text(
+                hasActiveOrder ? 'Chat about your current order' : 'Available when you have an order',
+                style: AppTextStyles.bodySmall(context),
+              ),
+              onTap: hasActiveOrder ? onMessageStaff : null,
+            ),
+            ListTile(
+              leading:
+              const Icon(Icons.settings_outlined, color: AppColors.gold),
+              title: Text('Account Settings',
+                  style: AppTextStyles.bodyLarge(context)),
+              subtitle: Text('Profile, password & payment',
+                  style: AppTextStyles.bodySmall(context)),
+              onTap: onSettings,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            GoldOutlineButton(label: 'SIGN OUT', onPressed: onLogout),
+          ],
         ),
       ),
     );
@@ -2460,7 +2393,7 @@ class _CategorySection extends StatelessWidget {
                   AppSpacing.md, 0, AppSpacing.md, AppSpacing.sm),
               itemCount: items.length,
               separatorBuilder: (_, __) =>
-                  const SizedBox(width: AppSpacing.sm + 2),
+              const SizedBox(width: AppSpacing.sm + 2),
               itemBuilder: (ctx, i) => SizedBox(
                 width: _kCategoryCardW,
                 child: MenuItemGridCard(

@@ -15,6 +15,7 @@ import 'widgets/app_widgets.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/menu/home_menu_screen.dart';
+import 'screens/main_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,7 +61,7 @@ class BingnondoApp extends StatelessWidget {
             case AuthStatus.initial:
               return const _SplashScreen();
             case AuthStatus.authenticated:
-              return const HomeMenuScreen();
+              return const MainShell();
             case AuthStatus.awaitingVerification:
               return const SignUpScreen();
             case AuthStatus.unauthenticated:
