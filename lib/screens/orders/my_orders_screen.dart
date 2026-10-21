@@ -99,19 +99,14 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
       decoration: const BoxDecoration(
         color: AppColors.primaryDark,
         borderRadius:
-            BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+        BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
       ),
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
       child: Column(
         children: [
           Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-                color: AppColors.textOnDark,
-                onPressed: () => Navigator.pop(context),
-              ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,13 +135,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
                 builder: (_, provider, __) => IconButton(
                   icon: provider.state == OrdersLoadState.loading
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              color: AppColors.gold, strokeWidth: 2),
-                        )
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        color: AppColors.gold, strokeWidth: 2),
+                  )
                       : const Icon(Icons.refresh_rounded,
-                          color: AppColors.gold, size: 20),
+                      color: AppColors.gold, size: 20),
                   onPressed: provider.state == OrdersLoadState.loading
                       ? null
                       : () => provider.refresh(),
@@ -450,7 +445,7 @@ class _OrderCard extends StatelessWidget {
                     color: AppColors.gold.withOpacity(0.07),
                     border: Border(
                       top:
-                          BorderSide(color: AppColors.gold.withOpacity(0.2)),
+                      BorderSide(color: AppColors.gold.withOpacity(0.2)),
                     ),
                     borderRadius: const BorderRadius.only(
                       bottomLeft: Radius.circular(AppRadius.lg),
@@ -708,11 +703,11 @@ class _OrderCardSkeletonState extends State<_OrderCardSkeleton>
         final col = Color.lerp(
             const Color(0xFFEFEBE4), const Color(0xFFDDD8CF), _a.value)!;
         Widget bar(double w, double h, [double r = AppRadius.sm]) => Container(
-              width: w,
-              height: h,
-              decoration: BoxDecoration(
-                  color: col, borderRadius: BorderRadius.circular(r)),
-            );
+          width: w,
+          height: h,
+          decoration: BoxDecoration(
+              color: col, borderRadius: BorderRadius.circular(r)),
+        );
         return Container(
           height: 132,
           padding: const EdgeInsets.all(AppSpacing.md),
@@ -731,7 +726,7 @@ class _OrderCardSkeletonState extends State<_OrderCardSkeleton>
                     width: 40,
                     height: 40,
                     decoration:
-                        BoxDecoration(color: col, shape: BoxShape.circle),
+                    BoxDecoration(color: col, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: AppSpacing.sm + 2),
                   Expanded(

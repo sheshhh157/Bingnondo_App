@@ -191,9 +191,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
                     expandedHeight: _expandedHeaderH,
                     collapsedHeight: _collapsedHeaderH,
                     badgeBounce: _badgeBounce,
-                    onCartTap: _goToCart,
                     onNotifTap: () => _push(const NotificationsScreen()),
-                    onProfileTap: () => _showProfileMenu(context),
                   ),
                   if (menuProvider.isLoaded &&
                       menuProvider.categories.isNotEmpty)
@@ -440,33 +438,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     );
   }
 
-  void _showProfileMenu(BuildContext context) {
-    // Refresh so the Message Staff tile reflects the latest order status
-    context.read<OrdersProvider>().loadOrders();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _ProfileSheet(
-        onLogout: () async {
-          Navigator.pop(context);
-          context.read<OrdersProvider>().clear();
-          await context.read<AuthProvider>().logout();
-        },
-        onMyOrders: () {
-          Navigator.pop(context);
-          _push(const MyOrdersScreen());
-        },
-        onSettings: () {
-          Navigator.pop(context);
-          _push(const AccountSettingsScreen());
-        },
-        onMessageStaff: () {
-          Navigator.pop(context);
-          _push(const SupportChatScreen());
-        },
-      ),
-    );
-  }
+
 }
 
 // ─── Persistent Animated Header ────────────────────────────────────────────────
@@ -475,18 +447,14 @@ class _PersistentHeader extends StatelessWidget {
   final double expandedHeight;
   final double collapsedHeight;
   final Animation<double> badgeBounce;
-  final VoidCallback onCartTap;
   final VoidCallback onNotifTap;
-  final VoidCallback onProfileTap;
 
   const _PersistentHeader({
     required this.collapseRatio,
     required this.expandedHeight,
     required this.collapsedHeight,
     required this.badgeBounce,
-    required this.onCartTap,
     required this.onNotifTap,
-    required this.onProfileTap,
   });
 
   double _lerp(double from, double to) =>
@@ -565,76 +533,14 @@ class _PersistentHeader extends StatelessWidget {
                   ),
                 ),
 
-                // Cart
-                Consumer<CartProvider>(
-                  builder: (_, cart, __) => Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      IconButton(
-                        icon: CustomPaint(
-                          size: const Size(22, 22),
-                          painter: _CartIconPainter(),
-                        ),
-                        onPressed: onCartTap,
-                        padding: const EdgeInsets.all(6),
-                        constraints: const BoxConstraints(
-                            minWidth: 36, minHeight: 36),
-                      ),
-                      if (cart.totalItemCount > 0)
-                        Positioned(
-                          top: 4,
-                          right: 3,
-                          child: ScaleTransition(
-                            scale: badgeBounce,
-                            child: Container(
-                              width: 16,
-                              height: 16,
-                              decoration: const BoxDecoration(
-                                  color: AppColors.gold,
-                                  shape: BoxShape.circle),
-                              child: Center(
-                                child: Text(
-                                  cart.totalItemCount > 9
-                                      ? '9+'
-                                      : '${cart.totalItemCount}',
-                                  style: GoogleFonts.karla(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
 
-                // Profile
-                GestureDetector(
-                  onTap: onProfileTap,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: AppColors.textOnDark.withOpacity(0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: AppColors.gold.withOpacity(0.5),
-                          width: 1.5),
-                    ),
-                    child: const Icon(Icons.person_outline_rounded,
-                        color: AppColors.textOnDark, size: 16),
-                  ),
-                ),
               ],
             ),
           ),
 
           // ── Brand content ─────────────────────────────────────────────
           Positioned.fill(
-            right: 112, // room for 3 icon buttons
+            right: 40, // room for 1 icon button (notif only)
             child: isCollapsed
                 ? _CollapsedBrand(
               catSize: catSize,

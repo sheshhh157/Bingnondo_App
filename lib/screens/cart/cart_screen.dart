@@ -176,14 +176,10 @@ class _CartScreenState extends State<CartScreen>
         BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
       ),
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm, AppSpacing.sm, AppSpacing.sm, AppSpacing.md),
+          AppSpacing.md, AppSpacing.sm, AppSpacing.sm, AppSpacing.md),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            color: AppColors.textOnDark,
-            onPressed: () => Navigator.pop(context),
-          ),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

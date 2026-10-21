@@ -97,123 +97,175 @@ class _MainShellState extends State<MainShell>
   }
 
   Widget _buildNav(BuildContext context) {
-    return Container(
-      height: 70,
-      decoration: BoxDecoration(
-        color: AppColors.surfaceWarm,
-        border: Border(
-          top: BorderSide(color: AppColors.goldMuted, width: 1.5),
-        ),
-      ),
-      child: Row(
+    const double navHeight = 70;
+    const double bubbleSize = 64;
+    // How much the bubble sticks out above the nav
+    const double overlap = 20;
+
+    return SizedBox(
+      height: navHeight + overlap,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          // Home
-          Expanded(
-            child: _NavItem(
-              icon: Icons.home_rounded,
-              label: 'Home',
-              active: _currentIndex == 0,
-              onTap: () => setState(() => _currentIndex = 0),
-            ),
-          ),
-          // Orders
-          Expanded(
-            child: _NavItem(
-              icon: Icons.receipt_long_rounded,
-              label: 'Orders',
-              active: _currentIndex == 2,
-              onTap: () => setState(() => _currentIndex = 2),
-            ),
-          ),
-          // Cart
-          Expanded(
-            child: Consumer<CartProvider>(
-              builder: (_, cart, __) => GestureDetector(
-                onTap: () => setState(() => _currentIndex = 1),
-                behavior: HitTestBehavior.opaque,
-                child: SizedBox(
-                  width: double.infinity,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(
-                            Icons.shopping_cart_rounded,
-                            color: _currentIndex == 1
-                                ? AppColors.primaryDark
-                                : AppColors.textSecondary.withOpacity(0.55),
-                            size: 34,
-                          ),
-                          if (cart.totalItemCount > 0)
-                            Positioned(
-                              top: -4,
-                              right: -6,
-                              child: AnimatedBuilder(
-                                animation: _badgeBounce,
-                                builder: (_, __) => Transform.scale(
-                                  scale: _badgeBounce.value,
-                                  child: Container(
-                                    width: 16,
-                                    height: 16,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.gold,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: AppColors.background,
-                                          width: 1.5),
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        cart.totalItemCount > 9
-                                            ? '9+'
-                                            : '${cart.totalItemCount}',
-                                        style: const TextStyle(
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.primaryDark,
+          // ── Nav bar (bottom portion) ────────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: navHeight,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceWarm,
+                border: Border(
+                  top: BorderSide(color: AppColors.goldMuted, width: 1.5),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Home
+                  Expanded(
+                    child: _NavItem(
+                      icon: Icons.home_rounded,
+                      label: 'Home',
+                      active: _currentIndex == 0,
+                      onTap: () => setState(() => _currentIndex = 0),
+                    ),
+                  ),
+                  // Orders
+                  Expanded(
+                    child: _NavItem(
+                      icon: Icons.receipt_long_rounded,
+                      label: 'Orders',
+                      active: _currentIndex == 2,
+                      onTap: () => setState(() => _currentIndex = 2),
+                    ),
+                  ),
+                  // Ndo Bot spacer — bubble floats above
+                  const Expanded(child: SizedBox()),
+                  // Cart
+                  Expanded(
+                    child: Consumer<CartProvider>(
+                      builder: (_, cart, __) => GestureDetector(
+                        onTap: () => setState(() => _currentIndex = 1),
+                        behavior: HitTestBehavior.opaque,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Icon(
+                                    Icons.shopping_cart_rounded,
+                                    color: _currentIndex == 1
+                                        ? AppColors.primaryDark
+                                        : AppColors.textSecondary.withOpacity(0.55),
+                                    size: 34,
+                                  ),
+                                  if (cart.totalItemCount > 0)
+                                    Positioned(
+                                      top: -4,
+                                      right: -6,
+                                      child: AnimatedBuilder(
+                                        animation: _badgeBounce,
+                                        builder: (_, __) => Transform.scale(
+                                          scale: _badgeBounce.value,
+                                          child: Container(
+                                            width: 16,
+                                            height: 16,
+                                            decoration: BoxDecoration(
+                                              color: AppColors.gold,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                  color: AppColors.background,
+                                                  width: 1.5),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                cart.totalItemCount > 9
+                                                    ? '9+'
+                                                    : '${cart.totalItemCount}',
+                                                style: const TextStyle(
+                                                  fontSize: 8,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: AppColors.primaryDark,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Cart',
+                                style: TextStyle(
+                                  fontFamily: 'Karla',
+                                  fontSize: 9,
+                                  fontWeight: _currentIndex == 1
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: _currentIndex == 1
+                                      ? AppColors.primaryDark
+                                      : AppColors.textSecondary.withOpacity(0.55),
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Cart',
-                        style: TextStyle(
-                          fontFamily: 'Karla',
-                          fontSize: 9,
-                          fontWeight: _currentIndex == 1
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: _currentIndex == 1
-                              ? AppColors.primaryDark
-                              : AppColors.textSecondary.withOpacity(0.55),
+                              const SizedBox(height: 4),
+                            ],
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                    ],
+                    ),
                   ),
-                ),
+                  // Account
+                  Expanded(
+                    child: _NavItem(
+                      icon: Icons.person_rounded,
+                      label: 'Account',
+                      active: _currentIndex == 3,
+                      onTap: () => setState(() => _currentIndex = 3),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          // Ndo Bot — pushes to chatbot, no tab index
-          Expanded(
-            child: _NdoBotNavItem(onTap: _goToChatbot),
-          ),
-          // Account
-          Expanded(
-            child: _NavItem(
-              icon: Icons.person_rounded,
-              label: 'Account',
-              active: _currentIndex == 3,
-              onTap: () => setState(() => _currentIndex = 3),
+
+          // ── Ndo Bot elevated bubble (overlaps nav top) ───────────────
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: _goToChatbot,
+                child: Container(
+                  width: bubbleSize,
+                  height: bubbleSize,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryDark,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.gold, width: 2.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryDark.withOpacity(0.35),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: SvgPicture.asset(
+                      'assets/images/ndo_bot.svg',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -297,8 +349,12 @@ class _NdoBotNavItem extends StatelessWidget {
           children: [
             SvgPicture.asset(
               'assets/images/ndo_bot.svg',
-              width: 36,
-              height: 36,
+              width: 34,
+              height: 34,
+              colorFilter: ColorFilter.mode(
+                AppColors.textSecondary.withOpacity(0.55),
+                BlendMode.srcIn,
+              ),
             ),
             const SizedBox(height: 2),
             Text(

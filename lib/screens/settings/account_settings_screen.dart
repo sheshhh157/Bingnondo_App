@@ -73,14 +73,9 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     return Container(
       color: AppColors.primaryDark,
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            color: AppColors.textOnDark,
-            onPressed: () => Navigator.pop(context),
-          ),
           Expanded(
             child: Text(
               'Account Settings',
@@ -90,6 +85,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
                 color: AppColors.textOnDark,
               ),
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, color: AppColors.gold, size: 22),
+            tooltip: 'Sign Out',
+            onPressed: () => _confirmSignOut(context),
           ),
         ],
       ),
@@ -117,10 +117,36 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
                   style: AppTextStyles.headline(context),
                   textAlign: TextAlign.center),
               const SizedBox(height: AppSpacing.xl),
-              PrimaryButton(
-                label: 'TRY AGAIN',
-                onPressed: provider.loadProfile,
-                isSmall: true,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  PrimaryButton(
+                    label: 'TRY AGAIN',
+                    onPressed: provider.loadProfile,
+                    isSmall: true,
+                  ),
+                  OutlinedButton(
+                    onPressed: () => _confirmSignOut(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary, width: 1.5),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                    ),
+                    child: Text(
+                      'SIGN OUT',
+                      style: GoogleFonts.karla(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -724,12 +750,12 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     _mobileCtrl =
         TextEditingController(text: widget.profile.mobileNumber ?? '');
     _pickedAddress = (widget.profile.address != null &&
-            widget.profile.address!.trim().isNotEmpty)
+        widget.profile.address!.trim().isNotEmpty)
         ? PickedAddress(
-            address:   widget.profile.address!,
-            latitude:  widget.profile.latitude,
-            longitude: widget.profile.longitude,
-          )
+      address:   widget.profile.address!,
+      latitude:  widget.profile.latitude,
+      longitude: widget.profile.longitude,
+    )
         : null;
   }
 
@@ -883,7 +909,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                               ? null
                               : _mobileCtrl.text.trim(),
                           address: (_pickedAddress == null ||
-                                  _pickedAddress!.isEmpty)
+                              _pickedAddress!.isEmpty)
                               ? null
                               : _pickedAddress!.address,
                           latitude:  _pickedAddress?.latitude,
