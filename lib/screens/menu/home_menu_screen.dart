@@ -102,13 +102,21 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     super.dispose();
   }
 
-  void _handleAddToCart(MenuItem item) => _addToCartQuantity(item, 1);
+  void _handleAddToCart(MenuItem item) {
+    // If the item has variants, open the detail sheet so the customer can pick.
+    // Otherwise, add directly to cart (existing fast-add behaviour).
+    if (item.hasVariants) {
+      _showItemDetail(context, item);
+    } else {
+      _addToCartQuantity(item, null, 1);
+    }
+  }
 
-  void _addToCartQuantity(MenuItem item, int quantity) {
+  void _addToCartQuantity(MenuItem item, MenuItemVariant? variant, int quantity) {
     if (quantity <= 0) return;
     final cart = context.read<CartProvider>();
     for (var i = 0; i < quantity; i++) {
-      cart.addItem(item);
+      cart.addItem(item, variant: variant);
     }
     final newCount = cart.totalItemCount;
     if (newCount > _prevCartCount) {
@@ -433,7 +441,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
       backgroundColor: Colors.transparent,
       builder: (_) => MenuItemDetailSheet(
         item: item,
-        onAddToCart: (qty) => _addToCartQuantity(item, qty),
+        onAddToCart: (qty, variant) => _addToCartQuantity(item, variant, qty),
       ),
     );
   }
@@ -1147,8 +1155,9 @@ class MenuItemGridCard extends StatelessWidget {
 class MenuItemDetailSheet extends StatefulWidget {
   final MenuItem item;
 
-  /// Called with the chosen quantity when the user taps ADD TO CART.
-  final void Function(int quantity) onAddToCart;
+  /// Called when the customer taps ADD TO CART.
+  /// [quantity] — how many; [variant] — chosen variant or null if none required.
+  final void Function(int quantity, MenuItemVariant? variant) onAddToCart;
 
   const MenuItemDetailSheet({
     super.key,
@@ -1162,8 +1171,33 @@ class MenuItemDetailSheet extends StatefulWidget {
 
 class _MenuItemDetailSheetState extends State<MenuItemDetailSheet> {
   int _qty = 1;
+  // Selected variants per group: groupId → chosen variant.
+  // For optional groups the value may be null (no selection).
+  final Map<int, MenuItemVariant?> _selectedVariants = {};
 
   MenuItem get item => widget.item;
+
+  /// The single chosen variant — for now we support one variant group at a time.
+  /// Returns the first selection found (or null).
+  MenuItemVariant? get _chosenVariant =>
+      _selectedVariants.values.firstWhere((v) => v != null, orElse: () => null);
+
+  /// True when all required groups have a selection.
+  bool get _canAdd {
+    for (final group in item.inferredVariantGroups) {
+      if (group.isRequired && _selectedVariants[group.id] == null) return false;
+    }
+    return true;
+  }
+
+  /// Effective price = base price + chosen variant price delta.
+  /// The variant price in DB is the TOTAL price of that option,
+  /// so we replace the base price entirely when a variant is picked.
+  double get _effectivePrice {
+    final chosen = _chosenVariant;
+    if (chosen != null) return chosen.price;
+    return item.price;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1214,6 +1248,17 @@ class _MenuItemDetailSheetState extends State<MenuItemDetailSheet> {
                         const SizedBox(height: AppSpacing.md),
                         Text(item.description!,
                             style: AppTextStyles.bodyMedium(context)),
+                      ],
+                      // ── Variant picker (shown only when variants exist) ───
+                      if (item.hasVariants) ...[
+                        const SizedBox(height: AppSpacing.lg),
+                        _VariantPicker(
+                          groups: item.inferredVariantGroups,
+                          selectedVariants: _selectedVariants,
+                          onChanged: (groupId, variant) {
+                            setState(() => _selectedVariants[groupId] = variant);
+                          },
+                        ),
                       ],
                       const SizedBox(height: AppSpacing.lg),
                       const ChineseDivider(),
@@ -1318,7 +1363,9 @@ class _MenuItemDetailSheetState extends State<MenuItemDetailSheet> {
   }
 
   Widget _bottomBar(BuildContext context, bool available) {
-    final total = item.price * _qty;
+    final total = _effectivePrice * _qty;
+    // Disable the button when a required variant hasn't been chosen yet.
+    final bool canPress = available && _canAdd;
     return SafeArea(
       top: false,
       child: Container(
@@ -1347,14 +1394,205 @@ class _MenuItemDetailSheetState extends State<MenuItemDetailSheet> {
                 label: available
                     ? 'ADD • ₱${total.toStringAsFixed(0)}'
                     : 'UNAVAILABLE',
-                onPressed: available
+                onPressed: canPress
                     ? () {
                   Navigator.pop(context);
-                  widget.onAddToCart(_qty);
+                  widget.onAddToCart(_qty, _chosenVariant);
                 }
                     : null,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// ─── Variant Picker ───────────────────────────────────────────────────────────
+
+/// Displays all variant groups for a menu item inside the detail sheet.
+/// Each group renders as a labelled chip row. Required groups show a red dot.
+class _VariantPicker extends StatelessWidget {
+  final List<VariantGroup> groups;
+  final Map<int, MenuItemVariant?> selectedVariants;
+  final void Function(int groupId, MenuItemVariant? variant) onChanged;
+
+  const _VariantPicker({
+    required this.groups,
+    required this.selectedVariants,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (groups.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: groups.map((group) => _buildGroup(context, group)).toList(),
+    );
+  }
+
+  Widget _buildGroup(BuildContext context, VariantGroup group) {
+    final chosen = selectedVariants[group.id];
+    final availableVariants = group.variants.where((v) => v.isAvailable).toList();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Group label row
+          Row(
+            children: [
+              Text(
+                group.name.toUpperCase(),
+                style: GoogleFonts.playfairDisplaySc(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(width: 6),
+              if (group.isRequired)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Text(
+                    'REQUIRED',
+                    style: GoogleFonts.karla(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.error,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text(
+                    'OPTIONAL',
+                    style: GoogleFonts.karla(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textMuted,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          // Variant chips
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              // "None" chip for optional groups
+              if (!group.isRequired)
+                _VariantChip(
+                  label: 'None',
+                  subLabel: null,
+                  isSelected: chosen == null,
+                  isNone: true,
+                  onTap: () => onChanged(group.id, null),
+                ),
+              ...availableVariants.map((variant) {
+                final isSelected = chosen?.id == variant.id;
+                // Show "+₱X" price difference compared to base item price
+                // (the variant.price in DB is already the FULL price of that option)
+                return _VariantChip(
+                  label: variant.name,
+                  subLabel: '₱${variant.price.toStringAsFixed(0)}',
+                  isSelected: isSelected,
+                  isNone: false,
+                  onTap: () => onChanged(group.id, variant),
+                );
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VariantChip extends StatelessWidget {
+  final String label;
+  final String? subLabel;
+  final bool isSelected;
+  final bool isNone;
+  final VoidCallback onTap;
+
+  const _VariantChip({
+    required this.label,
+    required this.subLabel,
+    required this.isSelected,
+    required this.isNone,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: isSelected ? 1.5 : 1.0,
+          ),
+          boxShadow: isSelected ? AppShadows.goldGlow : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isSelected && !isNone) ...[
+              Icon(Icons.check_rounded,
+                  size: 13,
+                  color: Colors.white),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: GoogleFonts.karla(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? Colors.white
+                    : isNone
+                    ? AppColors.textMuted
+                    : AppColors.textPrimary,
+              ),
+            ),
+            if (subLabel != null) ...[
+              const SizedBox(width: 5),
+              Text(
+                subLabel!,
+                style: GoogleFonts.karla(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: isSelected
+                      ? Colors.white.withOpacity(0.85)
+                      : AppColors.textMuted,
+                ),
+              ),
+            ],
           ],
         ),
       ),

@@ -1,5 +1,69 @@
 // ─── Menu Models ──────────────────────────────────────────────────────────────
 
+// ─── Variant Models ───────────────────────────────────────────────────────────
+
+class MenuItemVariant {
+  final int id;
+  final int menuItemId;
+  final String name;
+  final double price;
+  final bool isAvailable;
+  final int displayOrder;
+  final int? variantGroupId;
+
+  const MenuItemVariant({
+    required this.id,
+    required this.menuItemId,
+    required this.name,
+    required this.price,
+    required this.isAvailable,
+    required this.displayOrder,
+    this.variantGroupId,
+  });
+
+  factory MenuItemVariant.fromJson(Map<String, dynamic> json) {
+    return MenuItemVariant(
+      id:             json['id'] as int,
+      menuItemId:     json['menu_item_id'] as int? ?? 0,
+      name:           json['name'] as String,
+      price:          (json['price'] as num).toDouble(),
+      isAvailable:    json['is_available'] as bool? ?? true,
+      displayOrder:   json['display_order'] as int? ?? 0,
+      variantGroupId: json['variant_group_id'] as int?,
+    );
+  }
+}
+
+class VariantGroup {
+  final int id;
+  final String name;
+  final int maxOptions;
+  final List<MenuItemVariant> variants;
+
+  const VariantGroup({
+    required this.id,
+    required this.name,
+    required this.maxOptions,
+    required this.variants,
+  });
+
+  /// True when the customer MUST pick at least one option from this group.
+  /// We treat max_options == 1 as a "required single-select" (e.g. Hot/Cold).
+  bool get isRequired => maxOptions == 1;
+
+  factory VariantGroup.fromJson(Map<String, dynamic> json) {
+    final rawVariants = json['variants'] as List<dynamic>? ?? [];
+    return VariantGroup(
+      id:         json['id'] as int,
+      name:       json['name'] as String,
+      maxOptions: json['max_options'] as int? ?? 1,
+      variants:   rawVariants
+          .map((v) => MenuItemVariant.fromJson(v as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
 class MenuCategory {
   final int id;
   final String name;
@@ -33,6 +97,10 @@ class MenuItem {
   final double price;
   final String? photoUrl;
   final bool isAvailable;
+  // Variants for this item — empty list means no variants (direct add-to-cart).
+  final List<MenuItemVariant> variants;
+  // Variant groups — populated from the detail endpoint or nested in /menu.
+  final List<VariantGroup> variantGroups;
 
   const MenuItem({
     required this.id,
@@ -42,9 +110,26 @@ class MenuItem {
     required this.price,
     this.photoUrl,
     required this.isAvailable,
+    this.variants = const [],
+    this.variantGroups = const [],
   });
 
+  /// True when this item has at least one available variant in any group.
+  bool get hasVariants => variants.any((v) => v.isAvailable);
+
   factory MenuItem.fromJson(Map<String, dynamic> json) {
+    // Parse flat variants list (used in /api/menu nested response)
+    final rawVariants = json['variants'] as List<dynamic>? ?? [];
+    final variantList = rawVariants
+        .map((v) => MenuItemVariant.fromJson(v as Map<String, dynamic>))
+        .toList();
+
+    // Parse variant_groups (used in /api/menu/:id detail response)
+    final rawGroups = json['variant_groups'] as List<dynamic>? ?? [];
+    final groupList = rawGroups
+        .map((g) => VariantGroup.fromJson(g as Map<String, dynamic>))
+        .toList();
+
     return MenuItem(
       id: json['id'] as int,
       categoryId: json['category_id'] as int,
@@ -54,19 +139,46 @@ class MenuItem {
       // Backend sends 'image_url'; fall back to 'photo_url' so mock data works.
       photoUrl: json['image_url'] as String? ?? json['photo_url'] as String?,
       isAvailable: json['is_available'] as bool? ?? true,
+      variants:      variantList,
+      variantGroups: groupList,
     );
   }
 
-  MenuItem copyWith({bool? isAvailable}) {
+  MenuItem copyWith({
+    bool? isAvailable,
+    List<MenuItemVariant>? variants,
+    List<VariantGroup>? variantGroups,
+  }) {
     return MenuItem(
-      id: id,
-      categoryId: categoryId,
-      name: name,
-      description: description,
-      price: price,
-      photoUrl: photoUrl,
-      isAvailable: isAvailable ?? this.isAvailable,
+      id:             id,
+      categoryId:     categoryId,
+      name:           name,
+      description:    description,
+      price:          price,
+      photoUrl:       photoUrl,
+      isAvailable:    isAvailable ?? this.isAvailable,
+      variants:       variants ?? this.variants,
+      variantGroups:  variantGroups ?? this.variantGroups,
     );
+  }
+
+  /// Build grouped variant structure from the flat `variants` list.
+  /// Used when variant_groups aren't returned (e.g. the list endpoint).
+  List<VariantGroup> get inferredVariantGroups {
+    if (variantGroups.isNotEmpty) return variantGroups;
+    // Group by variantGroupId; ungrouped variants go under a default group.
+    final Map<int?, List<MenuItemVariant>> grouped = {};
+    for (final v in variants) {
+      (grouped[v.variantGroupId] ??= []).add(v);
+    }
+    return grouped.entries.map((entry) {
+      return VariantGroup(
+        id:         entry.key ?? 0,
+        name:       'Options',
+        maxOptions: 1,
+        variants:   entry.value,
+      );
+    }).toList();
   }
 }
 

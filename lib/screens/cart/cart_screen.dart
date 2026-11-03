@@ -306,20 +306,20 @@ class _CartScreenState extends State<CartScreen>
                 return Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                   child: Dismissible(
-                    key: ValueKey(item.menuItemId),
+                    key: ValueKey('${item.menuItemId}_${item.variantId ?? 0}'),
                     direction: DismissDirection.endToStart,
                     background: _dismissBackground(),
-                    onDismissed: (_) => cart.removeItem(item.menuItemId),
+                    onDismissed: (_) => cart.removeItem(item.menuItemId, variantId: item.variantId),
                     child: _CartItemRow(
                       item: item,
                       isUnavailable: isUnavailable,
                       onIncrement: () =>
-                          cart.incrementQuantity(item.menuItemId),
+                          cart.incrementQuantity(item.menuItemId, variantId: item.variantId),
                       onDecrement: () =>
-                          cart.decrementQuantity(item.menuItemId),
-                      onRemove: () => cart.removeItem(item.menuItemId),
+                          cart.decrementQuantity(item.menuItemId, variantId: item.variantId),
+                      onRemove: () => cart.removeItem(item.menuItemId, variantId: item.variantId),
                       onNoteChanged: (note) =>
-                          cart.updateNote(item.menuItemId, note),
+                          cart.updateNote(item.menuItemId, note, variantId: item.variantId),
                     ),
                   ),
                 );
@@ -593,6 +593,29 @@ class _CartItemRowState extends State<_CartItemRow> {
                             height: 1.3,
                           ),
                         ),
+                        if (widget.item.variantName != null) ...[
+                          const SizedBox(height: 2),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.gold.withOpacity(0.12),
+                              borderRadius:
+                              BorderRadius.circular(AppRadius.pill),
+                              border: Border.all(
+                                  color: AppColors.gold.withOpacity(0.35)),
+                            ),
+                            child: Text(
+                              widget.item.variantName!,
+                              style: GoogleFonts.karla(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 3),
                         Text(
                           '₱${widget.item.price.toStringAsFixed(2)} each',

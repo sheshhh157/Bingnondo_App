@@ -61,39 +61,56 @@ class CartProvider extends ChangeNotifier {
 
   // ─── Cart Operations ───────────────────────────────────────────────────────
 
-  void addItem(MenuItem menuItem) {
-    final existing = _items.indexWhere((i) => i.menuItemId == menuItem.id);
+  void addItem(MenuItem menuItem, {MenuItemVariant? variant}) {
+    // Two cart entries for the same item are SEPARATE if they have different
+    // variants (e.g. Hot vs Cold Milk Tea should be distinct line items).
+    final effectivePrice = variant?.price ?? menuItem.price;
+    final variantId   = variant?.id;
+    final variantName = variant?.name;
+
+    final existing = _items.indexWhere(
+          (i) => i.menuItemId == menuItem.id && i.variantId == variantId,
+    );
+
     if (existing >= 0) {
       _items[existing] = _items[existing].copyWith(
         quantity: _items[existing].quantity + 1,
       );
     } else {
       _items.add(CartItem(
-        menuItemId: menuItem.id,
-        name:       menuItem.name,
-        price:      menuItem.price,
-        photoUrl:   menuItem.photoUrl,
+        menuItemId:  menuItem.id,
+        name:        menuItem.name,
+        price:       effectivePrice,
+        photoUrl:    menuItem.photoUrl,
+        variantId:   variantId,
+        variantName: variantName,
       ));
     }
     _clearError();
     notifyListeners();
   }
 
-  void removeItem(int menuItemId) {
-    _items.removeWhere((i) => i.menuItemId == menuItemId);
+  void removeItem(int menuItemId, {int? variantId}) {
+    _items.removeWhere(
+          (i) => i.menuItemId == menuItemId && i.variantId == variantId,
+    );
     notifyListeners();
   }
 
-  void incrementQuantity(int menuItemId) {
-    final idx = _items.indexWhere((i) => i.menuItemId == menuItemId);
+  void incrementQuantity(int menuItemId, {int? variantId}) {
+    final idx = _items.indexWhere(
+          (i) => i.menuItemId == menuItemId && i.variantId == variantId,
+    );
     if (idx >= 0) {
       _items[idx] = _items[idx].copyWith(quantity: _items[idx].quantity + 1);
       notifyListeners();
     }
   }
 
-  void decrementQuantity(int menuItemId) {
-    final idx = _items.indexWhere((i) => i.menuItemId == menuItemId);
+  void decrementQuantity(int menuItemId, {int? variantId}) {
+    final idx = _items.indexWhere(
+          (i) => i.menuItemId == menuItemId && i.variantId == variantId,
+    );
     if (idx >= 0) {
       if (_items[idx].quantity <= 1) {
         _items.removeAt(idx);
@@ -104,8 +121,10 @@ class CartProvider extends ChangeNotifier {
     }
   }
 
-  void updateNote(int menuItemId, String note) {
-    final idx = _items.indexWhere((i) => i.menuItemId == menuItemId);
+  void updateNote(int menuItemId, String note, {int? variantId}) {
+    final idx = _items.indexWhere(
+          (i) => i.menuItemId == menuItemId && i.variantId == variantId,
+    );
     if (idx >= 0) {
       _items[idx] = _items[idx].copyWith(note: note);
       notifyListeners();

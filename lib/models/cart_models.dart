@@ -7,6 +7,9 @@ class CartItem {
   final String? photoUrl;
   int quantity;
   String? note; // per-item note
+  // Variant selection — null means no variant chosen / item has no variants.
+  final int? variantId;
+  final String? variantName;
 
   CartItem({
     required this.menuItemId,
@@ -15,26 +18,32 @@ class CartItem {
     this.photoUrl,
     this.quantity = 1,
     this.note,
+    this.variantId,
+    this.variantName,
   });
 
   double get subtotal => price * quantity;
 
   CartItem copyWith({int? quantity, String? note}) {
     return CartItem(
-      menuItemId: menuItemId,
-      name: name,
-      price: price,
-      photoUrl: photoUrl,
-      quantity: quantity ?? this.quantity,
-      note: note ?? this.note,
+      menuItemId:  menuItemId,
+      name:        name,
+      price:       price,
+      photoUrl:    photoUrl,
+      quantity:    quantity ?? this.quantity,
+      note:        note ?? this.note,
+      variantId:   variantId,
+      variantName: variantName,
     );
   }
 
   Map<String, dynamic> toOrderJson() => {
     'menu_item_id': menuItemId,
-    'quantity': quantity,
-    'unit_price': price,
-    if (note != null && note!.isNotEmpty) 'note': note,
+    'quantity':     quantity,
+    'unit_price':   price,
+    if (variantId != null)                       'variant_id':   variantId,
+    if (variantName != null)                     'variant_name': variantName,
+    if (note != null && note!.isNotEmpty)        'note':         note,
   };
 }
 
