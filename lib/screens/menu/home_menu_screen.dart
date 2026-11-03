@@ -1687,19 +1687,12 @@ class _ReviewsSectionState extends State<_ReviewsSection> {
     super.dispose();
   }
 
-  void _comingSoon() {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Review submission is coming soon.',
-            style: GoogleFonts.karla(fontSize: 13)),
-        duration: const Duration(seconds: 2),
-        backgroundColor: AppColors.primaryDark,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md)),
-      ),
+  void _openWriteReview() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _WriteReviewSheet(provider: _provider),
     );
   }
 
@@ -1724,15 +1717,18 @@ class _ReviewsSectionState extends State<_ReviewsSection> {
                     ),
                   ),
                 ),
-                if (_provider.hasReviews)
+                // Show "Write a review" / "Edit review" only if eligible
+                if (_provider.canWriteReview)
                   GestureDetector(
-                    onTap: _comingSoon,
+                    onTap: _openWriteReview,
                     behavior: HitTestBehavior.opaque,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 4, vertical: 4),
                       child: Text(
-                        'Write a review',
+                        _provider.hasAlreadyReviewed
+                            ? 'Edit review'
+                            : 'Write a review',
                         style: GoogleFonts.karla(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -1807,6 +1803,29 @@ class _ReviewsSectionState extends State<_ReviewsSection> {
           Text('Be the first to share your experience.',
               textAlign: TextAlign.center,
               style: AppTextStyles.bodySmall(context)),
+          // If eligible, show CTA button inside empty state too
+          if (_provider.canWriteReview) ...[
+            const SizedBox(height: AppSpacing.md),
+            GestureDetector(
+              onTap: _openWriteReview,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.gold,
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  'Write a Review',
+                  style: GoogleFonts.karla(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1993,6 +2012,300 @@ class _ReviewCard extends StatelessWidget {
     return 'Just now';
   }
 }
+
+// ─── Write / Edit Review Sheet ─────────────────────────────────────────────────
+class _WriteReviewSheet extends StatefulWidget {
+  final ReviewProvider provider;
+  const _WriteReviewSheet({required this.provider});
+
+  @override
+  State<_WriteReviewSheet> createState() => _WriteReviewSheetState();
+}
+
+class _WriteReviewSheetState extends State<_WriteReviewSheet> {
+  int _selectedRating = 0;          // 0 = not yet picked
+  final _commentCtrl = TextEditingController();
+  bool _submitting = false;
+
+  static const _starLabels = ['Terrible', 'Poor', 'Okay', 'Good', 'Excellent'];
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillExisting();
+  }
+
+  /// If the customer already reviewed this item, pre-fill the form.
+  Future<void> _prefillExisting() async {
+    if (!widget.provider.hasAlreadyReviewed) return;
+    final existing = await ReviewService.instance
+        .fetchMyReview(widget.provider.itemId);
+    if (existing != null && mounted) {
+      setState(() {
+        _selectedRating = existing.rating.round();
+        _commentCtrl.text = existing.comment;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_selectedRating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please select a star rating.',
+              style: GoogleFonts.karla(fontSize: 13)),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md)),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+
+    final success = await widget.provider.submitReview(
+      rating:  _selectedRating,
+      comment: _commentCtrl.text.trim(),
+    );
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
+
+    if (success) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.provider.hasAlreadyReviewed
+                ? 'Review updated! Salamat sa iyong feedback.'
+                : 'Review submitted! Salamat sa iyong feedback.',
+            style: GoogleFonts.karla(fontSize: 13),
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md)),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.provider.submitError ?? 'Something went wrong.',
+            style: GoogleFonts.karla(fontSize: 13),
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md)),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.md, AppSpacing.lg,
+          AppSpacing.lg + bottomInset),
+      decoration: const BoxDecoration(
+        color: AppColors.background,
+        borderRadius:
+        BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Handle ───────────────────────────────────────────────────
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+            ),
+          ),
+
+          // ── Title ────────────────────────────────────────────────────
+          Text(
+            widget.provider.hasAlreadyReviewed
+                ? 'Edit Your Review'
+                : 'Write a Review',
+            style: GoogleFonts.playfairDisplaySc(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Your feedback helps other customers.',
+            style: GoogleFonts.karla(
+              fontSize: 12,
+              color: AppColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // ── Star picker ──────────────────────────────────────────────
+          Center(
+            child: Column(
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(5, (i) {
+                    final star = i + 1;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedRating = star),
+                      child: Padding(
+                        padding:
+                        const EdgeInsets.symmetric(horizontal: 6),
+                        child: Icon(
+                          star <= _selectedRating
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          color: star <= _selectedRating
+                              ? AppColors.gold
+                              : AppColors.textMuted.withOpacity(0.4),
+                          size: 40,
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 6),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: _selectedRating > 0
+                      ? Text(
+                    _starLabels[_selectedRating - 1],
+                    key: ValueKey(_selectedRating),
+                    style: GoogleFonts.karla(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.gold,
+                    ),
+                  )
+                      : Text(
+                    'Tap a star to rate',
+                    key: const ValueKey(0),
+                    style: GoogleFonts.karla(
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // ── Comment ──────────────────────────────────────────────────
+          Text(
+            'Comment (optional)',
+            style: GoogleFonts.karla(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _commentCtrl,
+            maxLines: 4,
+            maxLength: 1000,
+            style: GoogleFonts.karla(fontSize: 14, color: AppColors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Share your experience with this dish...',
+              hintStyle: GoogleFonts.karla(
+                  fontSize: 13, color: AppColors.textMuted),
+              filled: true,
+              fillColor: AppColors.card,
+              counterStyle: GoogleFonts.karla(
+                  fontSize: 11, color: AppColors.textMuted),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                borderSide: BorderSide(
+                    color: AppColors.gold.withOpacity(0.6), width: 1.5),
+              ),
+              contentPadding: const EdgeInsets.all(AppSpacing.md),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // ── Submit button ────────────────────────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _submitting
+                  ? const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                      color: AppColors.gold, strokeWidth: 2.5),
+                ),
+              )
+                  : ElevatedButton(
+                onPressed: _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  foregroundColor: AppColors.primaryDark,
+                  padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.md),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                    BorderRadius.circular(AppRadius.pill),
+                  ),
+                  elevation: 0,
+                ),
+                child: Text(
+                  widget.provider.hasAlreadyReviewed
+                      ? 'UPDATE REVIEW'
+                      : 'SUBMIT REVIEW',
+                  style: GoogleFonts.karla(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 
 // ─── Star row ─────────────────────────────────────────────────────────────────
 class _StarRow extends StatelessWidget {
