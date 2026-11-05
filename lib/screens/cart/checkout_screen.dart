@@ -28,6 +28,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/cart_models.dart';
 import '../../models/geo_models.dart';
+import '../../services/address_history_service.dart';
 import '../../services/cart_provider.dart';
 import '../../services/orders_provider.dart';
 import '../../services/gcash_receipt_service.dart';
@@ -295,7 +296,7 @@ class _CheckoutScreenState extends State<CheckoutScreen>
 // ══════════════════════════════════════════════════════════════════════════════
 // Step 1 — Payment Method Selection
 // ══════════════════════════════════════════════════════════════════════════════
-class _PaymentSelectionStep extends StatelessWidget {
+class _PaymentSelectionStep extends StatefulWidget {
   final CartProvider cart;
   final VoidCallback onGcashTap;
   final VoidCallback onCodTap;
@@ -306,20 +307,223 @@ class _PaymentSelectionStep extends StatelessWidget {
     required this.onCodTap,
   });
 
-  Future<void> _changeAddress(BuildContext context) async {
+  @override
+  State<_PaymentSelectionStep> createState() => _PaymentSelectionStepState();
+}
+
+class _PaymentSelectionStepState extends State<_PaymentSelectionStep> {
+  CartProvider get cart => widget.cart;
+
+  // ── Confirm address before proceeding to payment detail ─────────────────
+  Future<void> _confirmAndProceed({
+    required PaymentMethod method,
+    required VoidCallback onConfirmed,
+  }) async {
+    final address = cart.deliveryAddress!.address;
+    final methodLabel = method == PaymentMethod.gcash ? 'GCash' : 'Cash on Delivery';
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle bar
+            Center(
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+
+            // Title
+            Text(
+              'Confirm Delivery Address',
+              style: GoogleFonts.playfairDisplaySc(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Your order will be delivered to this address.',
+              style: GoogleFonts.karla(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+
+            // Address card
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: AppColors.gold.withOpacity(0.4)),
+                boxShadow: AppShadows.card,
+              ),
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.gold.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.location_on_rounded,
+                      color: AppColors.gold, size: 20),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Text(
+                    address,
+                    style: GoogleFonts.karla(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: AppSpacing.md),
+
+            // Payment method reminder
+            Row(children: [
+              const Icon(Icons.info_outline_rounded,
+                  size: 14, color: AppColors.textMuted),
+              const SizedBox(width: 6),
+              Text(
+                'Payment via $methodLabel',
+                style: GoogleFonts.karla(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                ),
+              ),
+            ]),
+            const SizedBox(height: AppSpacing.lg),
+
+            // Buttons
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx, false);
+                    await _changeAddress(context);
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    side: BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text('Change',
+                      style: GoogleFonts.karla(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text('Confirm & Continue',
+                      style: GoogleFonts.karla(
+                          fontSize: 14, fontWeight: FontWeight.w700)),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      cart.setPaymentMethod(method);
+      onConfirmed();
+    }
+  }
+
+  // ── Open the address picker (map), then save to history ──────────────────
+  Future<void> _openMapPicker() async {
     final picked = await Navigator.push<PickedAddress>(
       context,
       MaterialPageRoute(
         builder: (_) => AddressPickerScreen(initial: cart.deliveryAddress),
       ),
     );
-    if (picked != null) {
+    if (picked != null && !picked.isEmpty) {
       cart.setDeliveryAddress(picked);
+      await AddressHistoryService.add(picked);
     }
+  }
+
+  // ── Show address history bottom sheet ────────────────────────────────────
+  Future<void> _changeAddress(BuildContext context) async {
+    final history = await AddressHistoryService.load();
+
+    if (!mounted) return;
+
+    // If no history yet, go straight to the map picker
+    if (history.isEmpty) {
+      await _openMapPicker();
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _AddressHistorySheet(
+        history: history,
+        onSelect: (picked) async {
+          Navigator.pop(ctx);
+          cart.setDeliveryAddress(picked);
+          // Bubble selected address to top of history
+          await AddressHistoryService.add(picked);
+        },
+        onAddNew: () async {
+          Navigator.pop(ctx);
+          await _openMapPicker();
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasAddress = cart.deliveryAddress != null &&
+        !cart.deliveryAddress!.isEmpty;
+
     return Column(children: [
       Expanded(
         child: SingleChildScrollView(
@@ -369,7 +573,28 @@ class _PaymentSelectionStep extends StatelessWidget {
               ],
 
               // ── Payment method selection ───────────────────────────────────
-              Text('Select Payment Method', style: AppTextStyles.label(context)),
+              Row(
+                children: [
+                  Text('Select Payment Method',
+                      style: AppTextStyles.label(context)),
+                  if (!hasAddress) ...[
+                    const SizedBox(width: AppSpacing.sm),
+                    const Icon(Icons.lock_rounded,
+                        size: 14, color: AppColors.textMuted),
+                  ],
+                ],
+              ),
+              if (!hasAddress) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Please select a delivery address first.',
+                  style: GoogleFonts.karla(
+                    fontSize: 11,
+                    color: AppColors.textMuted,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
               const SizedBox(height: AppSpacing.sm),
 
               // GCash option
@@ -380,10 +605,11 @@ class _PaymentSelectionStep extends StatelessWidget {
                 description: 'Pay via GCash e-wallet',
                 badge:       'QR PAYMENT',
                 badgeColor:  const Color(0xFF1E88E5),
-                onTap: () {
-                  cart.setPaymentMethod(PaymentMethod.gcash);
-                  onGcashTap();
-                },
+                disabled:    !hasAddress,
+                onTap: !hasAddress ? null : () => _confirmAndProceed(
+                  method:      PaymentMethod.gcash,
+                  onConfirmed: widget.onGcashTap,
+                ),
               ),
 
               const SizedBox(height: AppSpacing.sm),
@@ -397,10 +623,11 @@ class _PaymentSelectionStep extends StatelessWidget {
                   description: 'Pay when your order arrives',
                   badge:       'COD',
                   badgeColor:  AppColors.success,
-                  onTap: () {
-                    cart.setPaymentMethod(PaymentMethod.cod);
-                    onCodTap();
-                  },
+                  disabled:    !hasAddress,
+                  onTap: !hasAddress ? null : () => _confirmAndProceed(
+                    method:      PaymentMethod.cod,
+                    onConfirmed: widget.onCodTap,
+                  ),
                 )
               else
                 _CodRestrictedBanner(),
@@ -414,15 +641,127 @@ class _PaymentSelectionStep extends StatelessWidget {
   }
 }
 
+// ── Address History Bottom Sheet ──────────────────────────────────────────────
+class _AddressHistorySheet extends StatelessWidget {
+  final List<PickedAddress>      history;
+  final ValueChanged<PickedAddress> onSelect;
+  final VoidCallback             onAddNew;
+
+  const _AddressHistorySheet({
+    required this.history,
+    required this.onSelect,
+    required this.onAddNew,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 36, height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Title
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg, 4, AppSpacing.lg, AppSpacing.sm),
+            child: Text(
+              'Recent Addresses',
+              style: GoogleFonts.playfairDisplaySc(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+
+          // History list
+          ...history.map((addr) => ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg, vertical: 2),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.gold.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.history_rounded,
+                  color: AppColors.gold, size: 18),
+            ),
+            title: Text(
+              addr.address,
+              style: GoogleFonts.karla(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textMuted, size: 20),
+            onTap: () => onSelect(addr),
+          )),
+
+          const Divider(height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.sm),
+
+          // Add new address button
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg, vertical: 2),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.add_location_alt_rounded,
+                  color: AppColors.primary, size: 18),
+            ),
+            title: Text(
+              'Add a new address',
+              style: GoogleFonts.karla(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+            ),
+            onTap: onAddNew,
+          ),
+
+          const SizedBox(height: AppSpacing.lg),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Big tappable payment method card ─────────────────────────────────────────
 class _PaymentMethodCard extends StatelessWidget {
-  final IconData   icon;
-  final Color      tint;
-  final String     title;
-  final String     description;
-  final String     badge;
-  final Color      badgeColor;
-  final VoidCallback onTap;
+  final IconData      icon;
+  final Color         tint;
+  final String        title;
+  final String        description;
+  final String        badge;
+  final Color         badgeColor;
+  final VoidCallback? onTap;
+  final bool          disabled;
 
   const _PaymentMethodCard({
     required this.icon,
@@ -431,75 +770,84 @@ class _PaymentMethodCard extends StatelessWidget {
     required this.description,
     required this.badge,
     required this.badgeColor,
-    required this.onTap,
+    this.onTap,
+    this.disabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color:        AppColors.card,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border:       Border.all(color: AppColors.border),
-          boxShadow:    AppShadows.card,
-        ),
-        child: Row(children: [
-          // Icon
-          Container(
-            width: 52, height: 52,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color:        tint.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border:       Border.all(color: tint.withOpacity(0.25)),
-            ),
-            child: Icon(icon, color: tint, size: 26),
+    return Opacity(
+      opacity: disabled ? 0.4 : 1.0,
+      child: GestureDetector(
+        onTap: disabled ? null : onTap,
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color:        AppColors.card,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border:       Border.all(color: AppColors.border),
+            boxShadow:    disabled ? null : AppShadows.card,
           ),
-          const SizedBox(width: AppSpacing.md),
+          child: Row(children: [
+            // Icon
+            Container(
+              width: 52, height: 52,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color:        tint.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border:       Border.all(color: tint.withOpacity(0.25)),
+              ),
+              child: Icon(icon, color: tint, size: 26),
+            ),
+            const SizedBox(width: AppSpacing.md),
 
-          // Labels
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Text(title,
-                      style: GoogleFonts.karla(
-                          fontSize:   15,
-                          fontWeight: FontWeight.w700,
-                          color:      AppColors.textPrimary)),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color:        badgeColor.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(4),
-                      border:       Border.all(
-                          color: badgeColor.withOpacity(0.3)),
-                    ),
-                    child: Text(badge,
+            // Labels
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text(title,
                         style: GoogleFonts.karla(
-                            fontSize:      9,
-                            fontWeight:    FontWeight.w800,
-                            color:         badgeColor,
-                            letterSpacing: 0.5)),
-                  ),
-                ]),
-                const SizedBox(height: 2),
-                Text(description,
-                    style: AppTextStyles.bodySmall(context)),
-              ],
+                            fontSize:   15,
+                            fontWeight: FontWeight.w700,
+                            color:      AppColors.textPrimary)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color:        badgeColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4),
+                        border:       Border.all(
+                            color: badgeColor.withOpacity(0.3)),
+                      ),
+                      child: Text(badge,
+                          style: GoogleFonts.karla(
+                              fontSize:      9,
+                              fontWeight:    FontWeight.w800,
+                              color:         badgeColor,
+                              letterSpacing: 0.5)),
+                    ),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(description,
+                      style: AppTextStyles.bodySmall(context)),
+                ],
+              ),
             ),
-          ),
 
-          // Chevron
-          const Icon(Icons.chevron_right_rounded,
-              color: AppColors.textMuted, size: 22),
-        ]),
+            // Chevron or lock
+            Icon(
+              disabled
+                  ? Icons.lock_rounded
+                  : Icons.chevron_right_rounded,
+              color: AppColors.textMuted,
+              size: 20,
+            ),
+          ]),
+        ),
       ),
     );
   }

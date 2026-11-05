@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 
@@ -394,6 +395,137 @@ class GoldOutlineButton extends StatelessWidget {
 }
 
 // ─── App TextField ────────────────────────────────────────────────────────────
+// ── Shared password validator ─────────────────────────────────────────────────
+// Use this in any screen that has a "new password" field.
+// Returns null if valid, or an error message string if not.
+String? validatePassword(String? v) {
+  if (v == null || v.isEmpty) return 'Password is required.';
+  if (v.length < 8)           return 'Must be at least 8 characters.';
+  if (!RegExp(r'[A-Z]').hasMatch(v)) return 'Must include at least one capital letter.';
+  if (!RegExp(r'[0-9]').hasMatch(v)) return 'Must include at least one number.';
+  if (!RegExp(r"""[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~/]""").hasMatch(v))
+    return 'Must include at least one special character.';
+  return null;
+}
+
+// ── Password requirements checklist ──────────────────────────────────────────
+// Drop this below any new-password AppTextField.
+// It reacts in real-time as the user types — red when unmet, green when met.
+//
+// Usage:
+//   ValueListenableBuilder<TextEditingValue>(
+//     valueListenable: _passwordController,
+//     builder: (_, val, __) => PasswordChecklist(password: val.text),
+//   )
+class PasswordChecklist extends StatelessWidget {
+  final String password;
+  const PasswordChecklist({super.key, required this.password});
+
+  @override
+  Widget build(BuildContext context) {
+    if (password.isEmpty) return const SizedBox.shrink();
+
+    final checks = [
+      (label: 'At least 8 characters',        met: password.length >= 8),
+      (label: 'At least one capital letter',   met: RegExp(r'[A-Z]').hasMatch(password)),
+      (label: 'At least one number',           met: RegExp(r'[0-9]').hasMatch(password)),
+      (label: 'At least one special character',
+      met: RegExp(r"""[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'`~/]""").hasMatch(password)),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: checks.map((c) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    c.met
+                        ? Icons.check_circle_rounded
+                        : Icons.cancel_rounded,
+                    key: ValueKey(c.met),
+                    size: 14,
+                    color: c.met ? AppColors.success : AppColors.error,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  c.label,
+                  style: GoogleFonts.karla(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: c.met ? AppColors.success : AppColors.error,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ── Input formatter presets ──────────────────────────────────────────────────
+// Used internally by AppTextField to auto-apply the right formatter + limit
+// based on keyboardType. Can also be referenced directly when needed.
+class _AppInputRules {
+  /// Digits only (phone, OTP, etc.)
+  static const int    maxPhone    = 11;  // 09XXXXXXXXX
+  static const int    maxNumber   = 20;  // generic numeric
+  static const int    maxName     = 50;
+  static const int    maxEmail    = 100;
+  static const int    maxPassword = 64;
+  static const int    maxText     = 200; // generic text / address / message
+
+  /// Letters (and spaces, hyphens, periods) only — no digits.
+  static final TextInputFormatter lettersOnly =
+  FilteringTextInputFormatter.allow(RegExp(r"[a-zA-ZÀ-ÿ\s\-\.']+"));
+
+  /// Digits only.
+  static final TextInputFormatter digitsOnly =
+      FilteringTextInputFormatter.digitsOnly;
+
+  /// Email — allow anything a valid email can contain.
+  static final TextInputFormatter emailChars =
+  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9@._+\-]'));
+
+  /// Password — printable ASCII, no spaces.
+  static final TextInputFormatter passwordChars =
+  FilteringTextInputFormatter.allow(RegExp(r'[^\s]'));
+
+  /// Returns the right [FilteringTextInputFormatter] for a given [keyboardType].
+  static List<TextInputFormatter> formattersFor(TextInputType type) {
+    if (type == TextInputType.phone ||
+        type == TextInputType.number) {
+      return [digitsOnly];
+    }
+    if (type == TextInputType.emailAddress) {
+      return [emailChars];
+    }
+    if (type == TextInputType.name) {
+      return [lettersOnly];
+    }
+    // text, multiline, url, etc. — no character restriction
+    return const [];
+  }
+
+  /// Returns a sensible default max length for a given [keyboardType].
+  /// Returns null for types where we don't want to impose a cap.
+  static int? defaultMaxLengthFor(TextInputType type) {
+    if (type == TextInputType.phone)         return maxPhone;
+    if (type == TextInputType.number)        return maxNumber;
+    if (type == TextInputType.emailAddress)  return maxEmail;
+    if (type == TextInputType.name)          return maxName;
+    return maxText;
+  }
+}
+
 class AppTextField extends StatefulWidget {
   final String label;
   final String? hint;
@@ -406,7 +538,13 @@ class AppTextField extends StatefulWidget {
   final FocusNode? focusNode;
   final Widget? prefixIcon;
   final bool autofocus;
+  /// Override the default max length. Pass 0 to remove the cap entirely.
   final int? maxLength;
+  /// Extra formatters on top of the auto-applied ones.
+  final List<TextInputFormatter>? extraFormatters;
+  /// Override the default autovalidateMode (onUserInteraction).
+  /// Pass [AutovalidateMode.disabled] to only validate on form submit.
+  final AutovalidateMode? autovalidateMode;
 
   const AppTextField({
     super.key,
@@ -422,6 +560,8 @@ class AppTextField extends StatefulWidget {
     this.prefixIcon,
     this.autofocus = false,
     this.maxLength,
+    this.extraFormatters,
+    this.autovalidateMode,
   });
 
   @override
@@ -432,24 +572,91 @@ class _AppTextFieldState extends State<AppTextField> {
   bool _obscured = true;
 
   @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    super.dispose();
+  }
+
+  void _onTextChanged() => setState(() {});
+
+  /// True when the field should show a green border.
+  bool get _isGreen {
+    final text = widget.controller.text;
+    if (text.isEmpty) return false;
+    if (widget.isPassword) return validatePassword(text) == null;
+    return true;
+  }
+
+  List<TextInputFormatter> get _formatters {
+    // Password fields: printable chars only, no additional restriction
+    if (widget.isPassword) {
+      return [
+        _AppInputRules.passwordChars,
+        LengthLimitingTextInputFormatter(_AppInputRules.maxPassword),
+        ...?widget.extraFormatters,
+      ];
+    }
+    final auto    = _AppInputRules.formattersFor(widget.keyboardType);
+    final capLen  = widget.maxLength == 0
+        ? null
+        : (widget.maxLength ?? _AppInputRules.defaultMaxLengthFor(widget.keyboardType));
+    return [
+      ...auto,
+      if (capLen != null) LengthLimitingTextInputFormatter(capLen),
+      ...?widget.extraFormatters,
+    ];
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final effectiveMaxLength = widget.isPassword
+        ? _AppInputRules.maxPassword
+        : (widget.maxLength == 0
+        ? null
+        : (widget.maxLength ??
+        _AppInputRules.defaultMaxLengthFor(widget.keyboardType)));
+
     return TextFormField(
-      controller: widget.controller,
-      obscureText: widget.isPassword && _obscured,
-      keyboardType: widget.keyboardType,
-      textInputAction: widget.textInputAction,
-      focusNode: widget.focusNode,
-      autofocus: widget.autofocus,
-      maxLength: widget.maxLength,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
+      controller:       widget.controller,
+      obscureText:      widget.isPassword && _obscured,
+      keyboardType:     widget.keyboardType,
+      textInputAction:  widget.textInputAction,
+      focusNode:        widget.focusNode,
+      autofocus:        widget.autofocus,
+      maxLength:        effectiveMaxLength,
+      inputFormatters:  _formatters,
+      autovalidateMode: widget.autovalidateMode ?? AutovalidateMode.onUserInteraction,
       style: GoogleFonts.karla(
         fontSize: 15,
         color: AppColors.textPrimary,
         fontWeight: FontWeight.w400,
       ),
       decoration: InputDecoration(
-        labelText: widget.label,
-        hintText: widget.hint,
+        labelText:  widget.label,
+        hintText:   widget.hint,
+        labelStyle: _isGreen
+            ? GoogleFonts.karla(color: AppColors.success)
+            : null,
+        enabledBorder: _isGreen
+            ? OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(
+              color: AppColors.success, width: 1.5),
+        )
+            : null,
+        focusedBorder: _isGreen
+            ? OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderSide: const BorderSide(
+              color: AppColors.success, width: 2),
+        )
+            : null,
         prefixIcon: widget.prefixIcon != null
             ? Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -466,7 +673,9 @@ class _AppTextFieldState extends State<AppTextField> {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Icon(
-              _obscured ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              _obscured
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
               color: AppColors.textMuted,
               size: 20,
             ),
@@ -475,8 +684,8 @@ class _AppTextFieldState extends State<AppTextField> {
             : null,
         counterText: '', // hide maxLength counter
       ),
-      onChanged: widget.onChanged,
-      validator: widget.validator,
+      onChanged:  widget.onChanged,
+      validator:  widget.validator,
     );
   }
 }

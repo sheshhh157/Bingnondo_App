@@ -1097,48 +1097,10 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                                   Icons.lock_outline_rounded,
                                   size: 20,
                                   color: AppColors.gold),
-                              validator: (v) {
-                                if (v == null || v.isEmpty)
-                                  return 'New password is required.';
-                                if (v.length < 8)
-                                  return 'At least 8 characters.';
-                                return null;
-                              },
+                              validator: validatePassword,
+                              autovalidateMode: AutovalidateMode.disabled,
                             ),
-                            if (val.text.isNotEmpty) ...[
-                              const SizedBox(height: AppSpacing.sm),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(
-                                          AppRadius.pill),
-                                      child: LinearProgressIndicator(
-                                        value: s,
-                                        backgroundColor: AppColors.border,
-                                        valueColor:
-                                        AlwaysStoppedAnimation(
-                                            _strengthColor(s)),
-                                        minHeight: 4,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Text(
-                                    s < 0.35
-                                        ? 'Weak'
-                                        : s < 0.65
-                                        ? 'Fair'
-                                        : 'Strong',
-                                    style: GoogleFonts.karla(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: _strengthColor(s),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                            PasswordChecklist(password: val.text),
                           ],
                         );
                       },

@@ -151,17 +151,19 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
                 child: Column(
                   children: [
                     _buildField(
-                      controller: _firstNameCtrl,
-                      label:      'First Name',
-                      hint:       'e.g. Juan',
-                      validator:  (v) => (v == null || v.trim().isEmpty) ? 'First name is required' : null,
+                      controller:  _firstNameCtrl,
+                      label:       'First Name',
+                      hint:        'e.g. Juan',
+                      keyboardType: TextInputType.name,
+                      validator:   (v) => (v == null || v.trim().isEmpty) ? 'First name is required' : null,
                     ),
                     const SizedBox(height: 16),
                     _buildField(
-                      controller: _lastNameCtrl,
-                      label:      'Last Name',
-                      hint:       'e.g. dela Cruz',
-                      validator:  (v) => (v == null || v.trim().isEmpty) ? 'Last name is required' : null,
+                      controller:  _lastNameCtrl,
+                      label:       'Last Name',
+                      hint:        'e.g. dela Cruz',
+                      keyboardType: TextInputType.name,
+                      validator:   (v) => (v == null || v.trim().isEmpty) ? 'Last name is required' : null,
                     ),
                     const SizedBox(height: 16),
                     _buildField(

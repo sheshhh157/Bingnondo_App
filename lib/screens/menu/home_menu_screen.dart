@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -2867,62 +2868,135 @@ class _CategorySection extends StatelessWidget {
 }
 
 // ─── Featured hero section ────────────────────────────────────────────────────
-// Large image-forward cards highlighting a pick from each category.
-class _FeaturedSection extends StatelessWidget {
+// Auto-scrolling PageView carousel with dot indicators.
+class _FeaturedSection extends StatefulWidget {
   final List<MenuItem> items;
   final void Function(MenuItem) onItemTap;
 
   const _FeaturedSection({required this.items, required this.onItemTap});
 
   @override
+  State<_FeaturedSection> createState() => _FeaturedSectionState();
+}
+
+class _FeaturedSectionState extends State<_FeaturedSection> {
+  late final PageController _pageCtrl;
+  late final Timer _timer;
+  int _currentPage = 0;
+
+  static const _autoScrollInterval = Duration(seconds: 4);
+
+  @override
+  void initState() {
+    super.initState();
+    _pageCtrl = PageController(viewportFraction: 1.0);
+    _timer = Timer.periodic(_autoScrollInterval, (_) {
+      if (!mounted) return;
+      final next = (_currentPage + 1) % widget.items.length;
+      _pageCtrl.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeInOutCubic,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
-          child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          boxShadow: AppShadows.card,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          child: Stack(
             children: [
-              Container(
-                width: 4,
-                height: 18,
-                decoration: BoxDecoration(
-                  color: AppColors.gold,
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
+              // ── Sliding cards fill the panel ────────────────────────────
+              SizedBox(
+                height: 230,
+                child: PageView.builder(
+                  controller: _pageCtrl,
+                  itemCount: widget.items.length,
+                  onPageChanged: (i) => setState(() => _currentPage = i),
+                  itemBuilder: (ctx, i) => _FeaturedCard(
+                    item: widget.items[i],
+                    onTap: () => widget.onItemTap(widget.items[i]),
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                'FEATURED',
-                style: GoogleFonts.playfairDisplaySc(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
-                  letterSpacing: 0.8,
+              // ── FEATURED label (top-left) ────────────────────────────────
+              Positioned(
+                top: 12,
+                left: 12,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: AppColors.gold,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'FEATURED',
+                      style: GoogleFonts.playfairDisplaySc(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: 0.8,
+                        shadows: const [
+                          Shadow(color: Color(0x99000000), blurRadius: 6),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.local_fire_department_rounded,
+                        size: 16, color: AppColors.gold),
+                  ],
                 ),
               ),
-              const Spacer(),
-              const Icon(Icons.local_fire_department_rounded,
-                  size: 18, color: AppColors.gold),
+              // ── Dot indicators (bottom-center) ───────────────────────────
+              Positioned(
+                bottom: 10,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(widget.items.length, (i) {
+                    final active = i == _currentPage;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOut,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: active ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: active
+                            ? AppColors.gold
+                            : Colors.white.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                    );
+                  }),
+                ),
+              ),
             ],
           ),
         ),
-        SizedBox(
-          height: 210,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            itemCount: items.length,
-            separatorBuilder: (_, __) =>
-            const SizedBox(width: AppSpacing.sm + 2),
-            itemBuilder: (ctx, i) => _FeaturedCard(
-              item: items[i],
-              onTap: () => onItemTap(items[i]),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -2967,27 +3041,7 @@ class _FeaturedCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Positioned(
-                top: 10,
-                left: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.gold,
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                  ),
-                  child: Text(
-                    'FEATURED',
-                    style: GoogleFonts.karla(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primaryDark,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-              ),
+
               Positioned(
                 left: 14,
                 right: 14,

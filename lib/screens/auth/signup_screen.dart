@@ -385,44 +385,14 @@ class _SignUpScreenState extends State<SignUpScreen>
                           size: 20,
                           color: AppColors.gold,
                         ),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Password is required.';
-                          if (v.length < 8) return 'Password must be at least 8 characters.';
-                          return null;
-                        },
+                        validator: validatePassword,
+                        autovalidateMode: AutovalidateMode.disabled,
                         onChanged: (_) {
                           if (_errorMessage != null) setState(() => _errorMessage = null);
                         },
                       ),
 
-                      // Password strength bar
-                      if (val.text.isNotEmpty) ...[
-                        const SizedBox(height: AppSpacing.sm),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(AppRadius.pill),
-                                child: LinearProgressIndicator(
-                                  value: strength,
-                                  backgroundColor: AppColors.border,
-                                  valueColor: AlwaysStoppedAnimation(_strengthColor(strength)),
-                                  minHeight: 4,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Text(
-                              _strengthLabel(strength),
-                              style: GoogleFonts.karla(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: _strengthColor(strength),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                      PasswordChecklist(password: val.text),
                     ],
                   );
                 },

@@ -124,18 +124,24 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             const SizedBox(height: AppSpacing.md),
           ],
 
-          AppTextField(
-            label: 'New Password',
-            controller: _passwordController,
-            isPassword: true,
-            textInputAction: TextInputAction.next,
-            autofocus: true,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
-            validator: (v) {
-              if (v == null || v.isEmpty) return 'Password is required.';
-              if (v.length < 8) return 'Password must be at least 8 characters.';
-              return null;
-            },
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _passwordController,
+            builder: (_, val, __) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppTextField(
+                  label: 'New Password',
+                  controller: _passwordController,
+                  isPassword: true,
+                  textInputAction: TextInputAction.next,
+                  autofocus: true,
+                  prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
+                  validator: validatePassword,
+                  autovalidateMode: AutovalidateMode.disabled,
+                ),
+                PasswordChecklist(password: val.text),
+              ],
+            ),
           ),
 
           const SizedBox(height: AppSpacing.md),

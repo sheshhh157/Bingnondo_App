@@ -42,7 +42,7 @@ final LatLngBounds _kDeliveryArea = LatLngBounds(
 /// returns results inside [_kDeliveryArea].
 String get _kDeliveryViewbox =>
     '${_kDeliveryArea.west},${_kDeliveryArea.north},'
-    '${_kDeliveryArea.east},${_kDeliveryArea.south}';
+        '${_kDeliveryArea.east},${_kDeliveryArea.south}';
 
 class AddressPickerScreen extends StatefulWidget {
   /// Pre-selected address (editing an existing one). May be null for a fresh pin.
@@ -60,8 +60,9 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
   late LatLng _center;
 
   PickedAddress? _resolved;     // last successfully resolved address
-  bool           _isResolving = false;
+  bool           _isResolving  = false;
   String?        _resolveError;
+  bool           _isOutsideArea = false; // geocode says not Sta. Cruz, Laguna
 
   Timer?         _debounce;
   int            _requestSeq = 0; // guards against out-of-order responses
@@ -121,11 +122,22 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
 
   Future<void> _resolveCenter() => _resolveAt(_center);
 
+  /// Returns true if the reverse-geocoded address belongs to Sta. Cruz, Laguna.
+  bool _isInStaCruzLaguna(PickedAddress picked) {
+    final addr = picked.address.toLowerCase();
+    final hasStaCruz = addr.contains('sta. cruz') ||
+        addr.contains('sta cruz') ||
+        addr.contains('santa cruz');
+    final hasLaguna = addr.contains('laguna');
+    return hasStaCruz && hasLaguna;
+  }
+
   Future<void> _resolveAt(LatLng point) async {
     final seq = ++_requestSeq;
     setState(() {
-      _isResolving  = true;
-      _resolveError = null;
+      _isResolving   = true;
+      _resolveError  = null;
+      _isOutsideArea = false;
     });
 
     try {
@@ -134,9 +146,12 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
         longitude: point.longitude,
       );
       if (!mounted || seq != _requestSeq) return;
+
+      final outside = !_isInStaCruzLaguna(picked);
       setState(() {
-        _resolved     = picked;
-        _isResolving  = false;
+        _resolved      = picked;
+        _isResolving   = false;
+        _isOutsideArea = outside;
       });
     } on GeoApiException catch (e) {
       if (!mounted || seq != _requestSeq) return;
@@ -434,34 +449,34 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
                 child: Material(
                   color: Colors.transparent,
                   child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  itemCount: _results.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: AppColors.border),
-                  itemBuilder: (_, i) {
-                    final r = _results[i];
-                    return ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.place_outlined,
-                          color: AppColors.gold, size: 20),
-                      title: Text(
-                        r.address.isNotEmpty ? r.address : r.displayName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.karla(
-                            fontSize: 13, color: AppColors.textPrimary),
-                      ),
-                      subtitle: r.address.isNotEmpty && r.displayName.isNotEmpty
-                          ? Text(r.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.karla(
-                                  fontSize: 11, color: AppColors.textMuted))
-                          : null,
-                      onTap: () => _pickSearchResult(r),
-                    );
-                  },
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _results.length,
+                    separatorBuilder: (_, __) =>
+                    const Divider(height: 1, color: AppColors.border),
+                    itemBuilder: (_, i) {
+                      final r = _results[i];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.place_outlined,
+                            color: AppColors.gold, size: 20),
+                        title: Text(
+                          r.address.isNotEmpty ? r.address : r.displayName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.karla(
+                              fontSize: 13, color: AppColors.textPrimary),
+                        ),
+                        subtitle: r.address.isNotEmpty && r.displayName.isNotEmpty
+                            ? Text(r.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.karla(
+                                fontSize: 11, color: AppColors.textMuted))
+                            : null,
+                        onTap: () => _pickSearchResult(r),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -549,7 +564,10 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
             const SizedBox(height: AppSpacing.sm),
             PrimaryButton(
               label: 'CONFIRM PIN',
-              onPressed: (_resolved != null && !_resolved!.isEmpty && !_isResolving)
+              onPressed: (_resolved != null &&
+                  !_resolved!.isEmpty &&
+                  !_isResolving &&
+                  !_isOutsideArea)
                   ? () => Navigator.pop(context, _resolved)
                   : null,
               isLoading: _isResolving && _resolved == null,
@@ -614,7 +632,9 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
           style: GoogleFonts.karla(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              color: _isOutsideArea
+                  ? AppColors.error
+                  : AppColors.textPrimary,
               height: 1.4),
         ),
         if (_resolved?.hasCoordinates == true) ...[
@@ -622,6 +642,32 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
           Text(
             '${_resolved!.latitude!.toStringAsFixed(6)}, ${_resolved!.longitude!.toStringAsFixed(6)}',
             style: AppTextStyles.caption(context),
+          ),
+        ],
+        if (_isOutsideArea) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.sm + 2),
+            decoration: BoxDecoration(
+              color: AppColors.error.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppColors.error.withOpacity(0.35)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.location_off_rounded,
+                  color: AppColors.error, size: 16),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'We only deliver within Sta. Cruz, Laguna. '
+                      'Please move the pin inside the delivery area.',
+                  style: GoogleFonts.karla(
+                      fontSize: 12,
+                      color: AppColors.error,
+                      height: 1.4),
+                ),
+              ),
+            ]),
           ),
         ],
       ],
