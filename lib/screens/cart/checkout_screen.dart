@@ -30,10 +30,12 @@ import '../../models/cart_models.dart';
 import '../../models/geo_models.dart';
 import '../../services/address_history_service.dart';
 import '../../services/cart_provider.dart';
+import '../../services/business_hours_provider.dart';
 import '../../services/orders_provider.dart';
 import '../../services/gcash_receipt_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import '../../widgets/business_hours_banner.dart';
 import '../address/address_picker_screen.dart';
 import '../orders/my_orders_screen.dart';
 
@@ -1988,6 +1990,9 @@ class _CheckoutBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isClosed =
+        context.watch<BusinessHoursProvider>().isKnownClosed;
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         AppSpacing.md, AppSpacing.md, AppSpacing.md,
@@ -2006,6 +2011,7 @@ class _CheckoutBottomBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const BusinessHoursBanner(compact: true),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -2026,7 +2032,7 @@ class _CheckoutBottomBar extends StatelessWidget {
             width: double.infinity,
             child: PrimaryButton(
               label:     label,
-              onPressed: isEnabled ? onPressed : null,
+              onPressed: (isEnabled && !isClosed) ? onPressed : null,
               isLoading: isLoading,
             ),
           ),

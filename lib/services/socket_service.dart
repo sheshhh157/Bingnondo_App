@@ -1,8 +1,3 @@
-// lib/services/socket_service.dart
-// §1.6 UPDATE — added leaveOrderRoom + multi-listener onOrderStatusUpdate
-// §1.7 UPDATE — added join_support / support_message / support_chat_status
-// §1.8 UPDATE — added joinCustomerRoom + new_notification listener
-
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
@@ -16,6 +11,7 @@ typedef OrderStatusCallback     = void Function(Map<String, dynamic>);
 typedef SupportMessageCallback  = void Function(Map<String, dynamic>);
 typedef SupportStatusCallback   = void Function(Map<String, dynamic>);
 typedef NotificationCallback    = void Function(Map<String, dynamic>);
+typedef RiderLocationCallback   = void Function(Map<String, dynamic>);
 
 class SocketService {
   SocketService._();
@@ -23,14 +19,16 @@ class SocketService {
 
   IO.Socket? _socket;
 
-  // Callbacks registered by providers
+  // Single-callback handlers registered by providers
   MenuUpdateCallback?     onMenuUpdate;
-  SupportMessageCallback? onSupportMessage;    // §1.7
-  SupportStatusCallback?  onSupportChatStatus; // §1.7 — lock/unlock events
-  NotificationCallback?   onNewNotification;   // §1.8
+  OrderStatusCallback?    onOrderStatusUpdate;
+  SupportMessageCallback? onSupportMessage;
+  SupportStatusCallback?  onSupportChatStatus;
+  NotificationCallback?   onNewNotification;
 
-  // §1.6 — multi-listener list so multiple providers can subscribe simultaneously
-  final List<OrderStatusCallback> _orderStatusListeners = [];
+  // Multi-listener callback lists
+  final List<OrderStatusCallback>   _orderStatusListeners = [];
+  final List<RiderLocationCallback>  _riderLocationListeners = [];
 
   // ── Connect ─────────────────────────────────────────────────────────────────
   void connect([String? baseUrl]) {
@@ -47,7 +45,6 @@ class SocketService {
 
     _socket!.onConnect((_) {
       debugPrint('[Socket] connected to $targetUrl');
-      // Join the shared menu room automatically on connect
       _socket!.emit('join_menu');
     });
 
@@ -59,18 +56,29 @@ class SocketService {
       }
     });
 
-    // §1.6 — fan-out to all registered listeners
     _socket!.on('order_status_update', (data) {
       try {
+        final map = data as Map<String, dynamic>;
+        onOrderStatusUpdate?.call(map);
         for (final cb in List.of(_orderStatusListeners)) {
-          cb(data as Map<String, dynamic>);
+          cb(map);
         }
       } catch (e) {
         debugPrint('[Socket] order_status_update error: $e');
       }
     });
 
-    // §1.7 — real-time support message from staff
+    _socket!.on('rider_location_update', (data) {
+      try {
+        final map = data as Map<String, dynamic>;
+        for (final cb in List.of(_riderLocationListeners)) {
+          cb(map);
+        }
+      } catch (e) {
+        debugPrint('[Socket] rider_location_update error: $e');
+      }
+    });
+
     _socket!.on('support_message', (data) {
       try {
         onSupportMessage?.call(data as Map<String, dynamic>);
@@ -79,7 +87,6 @@ class SocketService {
       }
     });
 
-    // §1.7 — chat locked / unlocked (triggered by order status changes)
     _socket!.on('support_chat_status', (data) {
       try {
         onSupportChatStatus?.call(data as Map<String, dynamic>);
@@ -88,7 +95,6 @@ class SocketService {
       }
     });
 
-    // §1.8 — real-time new notification push
     _socket!.on('new_notification', (data) {
       try {
         onNewNotification?.call(data as Map<String, dynamic>);
@@ -97,7 +103,6 @@ class SocketService {
       }
     });
 
-    // fallback alias (some backends emit 'notification')
     _socket!.on('notification', (data) {
       try {
         onNewNotification?.call(data as Map<String, dynamic>);
@@ -112,43 +117,34 @@ class SocketService {
     _socket!.connect();
   }
 
+  // ── Listener subscriptions ───────────────────────────────────────────────
+
+  VoidCallback listenOrderStatus(OrderStatusCallback cb) {
+    _orderStatusListeners.add(cb);
+    return () => _orderStatusListeners.remove(cb);
+  }
+
+  VoidCallback listenRiderLocation(RiderLocationCallback cb) {
+    _riderLocationListeners.add(cb);
+    return () => _riderLocationListeners.remove(cb);
+  }
+
   // ── Rooms ───────────────────────────────────────────────────────────────────
 
-  /// §1.7 — Call after login: joins the customer's personal support room so
-  /// they receive real-time staff replies and lock/unlock state changes.
   void joinSupportRoom(int customerId) {
     _socket?.emit('join_support', {'customer_id': customerId});
   }
 
-  /// §1.8 — Call after login: joins the customer's personal notification room
-  /// so the app receives real-time `new_notification` events for badge updates.
   void joinCustomerRoom(int customerId) {
     _socket?.emit('join_customer', {'customer_id': customerId});
   }
 
-  /// §1.6 — Call when opening the order tracking screen.
   void joinOrderRoom(int orderId) {
     _socket?.emit('join_order', {'order_id': orderId});
   }
 
-  /// §1.6 — Call when leaving the order tracking screen (in Provider.dispose).
   void leaveOrderRoom(int orderId) {
     _socket?.emit('leave_order', {'order_id': orderId});
-  }
-
-  // ── Listeners ───────────────────────────────────────────────────────────────
-
-  /// §1.6 — Register a callback for order_status_update events.
-  /// Returns a VoidCallback — call it in your provider's dispose() to unsubscribe.
-  ///
-  /// Usage:
-  ///   late final VoidCallback _unsub;
-  ///   _unsub = SocketService.instance.listenOrderStatus((data) { ... });
-  ///   // in dispose:
-  ///   _unsub();
-  VoidCallback listenOrderStatus(OrderStatusCallback cb) {
-    _orderStatusListeners.add(cb);
-    return () => _orderStatusListeners.remove(cb);
   }
 
   // ── Disconnect ──────────────────────────────────────────────────────────────

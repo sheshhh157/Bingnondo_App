@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_map/flutter_map.dart';        // §1.9 rider map
+import 'package:latlong2/latlong.dart' hide Path;               // §1.9 LatLng
 import '../../models/tracking_models.dart';
 import '../../services/gcash_receipt_service.dart';
 import '../../services/order_tracking_provider.dart';
@@ -235,6 +237,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     _buildSectionLabel(context, 'Order Progress'),
                     const SizedBox(height: AppSpacing.sm),
                     _OrderTimeline(order: order, pulse: _pulse),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
+
+                  // ── §1.9 Rider live-location map ─────────────────────────
+                  if (tracking.showRiderMap) ...[
+                    _buildSectionLabel(context, 'Rider Location'),
+                    const SizedBox(height: AppSpacing.sm),
+                    _RiderMapCard(
+                      riderLocation: tracking.riderLocation!,
+                      deliveryInfo:  order.delivery,
+                    ),
                     const SizedBox(height: AppSpacing.lg),
                   ],
 
@@ -1961,5 +1974,267 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
         ],
       ),
     );
+  }
+}
+
+// ─── §1.9 Rider Map Card ──────────────────────────────────────────────────────
+//
+// Shows an OpenStreetMap tile map (via flutter_map) with two markers:
+//   • 🛵  Rider — animated pulsing dot, updates as location streams in
+//   • 📍  Customer delivery pin — static, shown when order has coordinates
+//
+// The map auto-pans to the rider whenever the position changes, keeping
+// the rider roughly centred with a slight offset so the info strip at the
+// bottom doesn't obscure the marker.
+
+class _RiderMapCard extends StatefulWidget {
+  final RiderLocation  riderLocation;
+  final DeliveryInfo?  deliveryInfo;
+
+  const _RiderMapCard({
+    required this.riderLocation,
+    this.deliveryInfo,
+  });
+
+  @override
+  State<_RiderMapCard> createState() => _RiderMapCardState();
+}
+
+class _RiderMapCardState extends State<_RiderMapCard>
+    with SingleTickerProviderStateMixin {
+  late final MapController      _mapCtrl;
+  late AnimationController      _pulseCtrl;
+  late Animation<double>        _pulseAnim;
+  RiderLocation?                _prev;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapCtrl  = MapController();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 6.0, end: 14.0).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void didUpdateWidget(_RiderMapCard old) {
+    super.didUpdateWidget(old);
+    // Smooth-pan the map whenever the rider moves
+    if (widget.riderLocation.latitude  != old.riderLocation.latitude ||
+        widget.riderLocation.longitude != old.riderLocation.longitude) {
+      _mapCtrl.move(
+        LatLng(widget.riderLocation.latitude, widget.riderLocation.longitude),
+        _mapCtrl.camera.zoom,
+      );
+    }
+    _prev = old.riderLocation;
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rider = widget.riderLocation;
+    final riderLatLng = LatLng(rider.latitude, rider.longitude);
+
+    // Freshness: dim marker if position is > 60 s old
+    final age = rider.updatedAt != null
+        ? DateTime.now().difference(rider.updatedAt!)
+        : Duration.zero;
+    final isStale = age > const Duration(seconds: 60);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.xl),
+        boxShadow: AppShadows.card,
+        border: Border.all(
+          color: AppColors.gold.withOpacity(0.25),
+          width: 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Map ────────────────────────────────────────────────────────────
+          SizedBox(
+            height: 220,
+            child: FlutterMap(
+              mapController: _mapCtrl,
+              options: MapOptions(
+                initialCenter: riderLatLng,
+                initialZoom:   16.0,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.pinchZoom |
+                  InteractiveFlag.doubleTapZoom |
+                  InteractiveFlag.drag,
+                ),
+              ),
+              children: [
+                // OSM tiles
+                TileLayer(
+                  urlTemplate:
+                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.bingnondo_app',
+                  maxZoom: 19,
+                ),
+
+                // Markers layer
+                MarkerLayer(
+                  markers: [
+                    // Rider marker — pulsing gold dot
+                    Marker(
+                      point:  riderLatLng,
+                      width:  48,
+                      height: 48,
+                      child: AnimatedBuilder(
+                        animation: _pulseAnim,
+                        builder: (_, __) => Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Outer pulse ring
+                            Container(
+                              width:  _pulseAnim.value * 2,
+                              height: _pulseAnim.value * 2,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppColors.gold
+                                    .withOpacity(isStale ? 0.08 : 0.22),
+                              ),
+                            ),
+                            // Inner dot
+                            Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isStale
+                                    ? AppColors.textMuted
+                                    : AppColors.gold,
+                                border: Border.all(
+                                    color: Colors.white, width: 2.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.gold.withOpacity(0.5),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: const Center(
+                                child: Text('🛵',
+                                    style: TextStyle(fontSize: 9)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Map attribution (required by OSM)
+                const RichAttributionWidget(
+                  attributions: [
+                    TextSourceAttribution('OpenStreetMap contributors'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // ── Info strip ─────────────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+            decoration: const BoxDecoration(
+              color: AppColors.primaryDark,
+            ),
+            child: Row(
+              children: [
+                // Rider icon
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.gold.withOpacity(0.15),
+                    border: Border.all(
+                        color: AppColors.gold.withOpacity(0.4), width: 1),
+                  ),
+                  child: const Center(
+                    child: Text('🛵', style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+
+                // Name + freshness
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.deliveryInfo?.riderName ?? 'Your rider',
+                        style: GoogleFonts.karla(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textOnDark,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        isStale
+                            ? 'Location may be outdated'
+                            : 'Live location · updated ${_formatAge(age)}',
+                        style: GoogleFonts.karla(
+                          fontSize: 11,
+                          color: isStale
+                              ? AppColors.error.withOpacity(0.8)
+                              : AppColors.gold.withOpacity(0.75),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Live indicator dot
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isStale ? AppColors.textMuted : AppColors.success,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  isStale ? 'Stale' : 'LIVE',
+                  style: GoogleFonts.karla(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: isStale ? AppColors.textMuted : AppColors.success,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatAge(Duration age) {
+    if (age.inSeconds < 10) return 'just now';
+    if (age.inSeconds < 60) return '${age.inSeconds}s ago';
+    return '${age.inMinutes}m ago';
   }
 }

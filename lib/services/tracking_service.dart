@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -47,7 +48,6 @@ class TrackingService {
   // ─── §1.6 Order Tracking ──────────────────────────────────────────────────
 
   /// GET /api/orders/:id
-  /// Full order detail — used on initial screen load.
   Future<OrderDetail> fetchOrder(int orderId) async {
     try {
       final headers = await _authHeaders();
@@ -57,13 +57,12 @@ class TrackingService {
       return OrderDetail.fromJson(_handleResponse(response));
     } on SocketException {
       throw const TrackingApiException('No internet connection.');
-    } on _TimeoutException {
+    } on TimeoutException {
       throw const TrackingApiException('Connection timed out.');
     }
   }
 
-  /// GET /api/orders/:id/timeline  — NEW §1.6
-  /// Full status-history timeline for the stepper UI.
+  /// GET /api/orders/:id/timeline
   Future<OrderTimeline> fetchOrderTimeline(int orderId) async {
     try {
       final headers = await _authHeaders();
@@ -73,13 +72,12 @@ class TrackingService {
       return OrderTimeline.fromJson(_handleResponse(response));
     } on SocketException {
       throw const TrackingApiException('No internet connection.');
-    } on _TimeoutException {
+    } on TimeoutException {
       throw const TrackingApiException('Connection timed out.');
     }
   }
 
-  /// GET /api/orders/:id/status  — NEW §1.6
-  /// Lightweight poll used as Socket.io fallback (every 15 s).
+  /// GET /api/orders/:id/status
   Future<OrderStatusPoll> fetchOrderStatus(int orderId) async {
     try {
       final headers = await _authHeaders();
@@ -89,7 +87,7 @@ class TrackingService {
       return OrderStatusPoll.fromJson(_handleResponse(response));
     } on SocketException {
       throw const TrackingApiException('No internet connection.');
-    } on _TimeoutException {
+    } on TimeoutException {
       throw const TrackingApiException('Connection timed out.');
     }
   }
@@ -105,7 +103,7 @@ class TrackingService {
       _handleResponse(response);
     } on SocketException {
       throw const TrackingApiException('No internet connection.');
-    } on _TimeoutException {
+    } on TimeoutException {
       throw const TrackingApiException('Connection timed out.');
     }
   }
@@ -123,7 +121,7 @@ class TrackingService {
       return SupportChat.fromJson(_handleResponse(response));
     } on SocketException {
       throw const TrackingApiException('No internet connection.');
-    } on _TimeoutException {
+    } on TimeoutException {
       throw const TrackingApiException('Connection timed out.');
     }
   }
@@ -149,24 +147,40 @@ class TrackingService {
       return SupportMessage.fromJson(data['message'] as Map<String, dynamic>);
     } on SocketException {
       throw const TrackingApiException('No internet connection.');
-    } on _TimeoutException {
+    } on TimeoutException {
       throw const TrackingApiException('Connection timed out.');
     }
   }
 
-  /// PUT /api/support-chat/read  (mark support messages read)
+  /// PUT /api/support-chat/read
   Future<void> markMessagesRead() async {
     try {
       final headers = await _authHeaders();
       await _client
           .put(Uri.parse('$_baseUrl/api/support-chat/read'), headers: headers)
           .timeout(_timeout);
-    } catch (_) {
-      // silently fail — read receipts are non-critical
+    } catch (_) {}
+  }
+
+  // ─── §1.9 Rider Live Location ─────────────────────────────────────────────
+
+  /// GET /api/orders/:id/rider-location
+  Future<RiderLocation?> fetchRiderLocation(int orderId) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await _client
+          .get(
+        Uri.parse('$_baseUrl/api/orders/$orderId/rider-location'),
+        headers: headers,
+      )
+          .timeout(_timeout);
+
+      if (response.statusCode == 204 || response.statusCode == 404) return null;
+      return RiderLocation.fromJson(_handleResponse(response));
+    } on SocketException {
+      throw const TrackingApiException('No internet connection.');
+    } on TimeoutException {
+      throw const TrackingApiException('Connection timed out.');
     }
   }
-}
-
-class _TimeoutException implements Exception {
-  const _TimeoutException();
 }

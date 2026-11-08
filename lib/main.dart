@@ -10,6 +10,7 @@ import 'services/support_chat_provider.dart';
 import 'services/orders_provider.dart';
 import 'services/notifications_provider.dart';
 import 'services/account_settings_provider.dart';
+import 'services/business_hours_provider.dart';
 import 'theme/app_theme.dart';
 import 'widgets/app_widgets.dart';
 import 'screens/auth/login_screen.dart';
@@ -31,6 +32,8 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => MenuProvider()),
+        // Business hours — drives the Open/Closed pill + order gating
+        ChangeNotifierProvider(create: (_) => BusinessHoursProvider()..start()),
         ChangeNotifierProvider(create: (_) => ChatbotProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => OrderTrackingProvider()),

@@ -9,9 +9,11 @@ import '../../models/review_model.dart';
 import '../../services/menu_provider.dart';
 import '../../services/cart_provider.dart';
 import '../../services/auth_provider.dart';
+import '../../services/business_hours_provider.dart';
 import '../../services/notifications_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import '../../widgets/business_hours_banner.dart';
 import '../chatbot/chatbot_screen.dart';
 import '../cart/cart_screen.dart';
 import '../orders/my_orders_screen.dart';
@@ -64,6 +66,8 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<MenuProvider>().loadMenu().then((_) => _rebuildTabs());
+      // Refresh the open/closed state whenever the home screen mounts
+      context.read<BusinessHoursProvider>().load();
       // Pre-load notifications for badge count
       context.read<NotificationsProvider>().load();
       // Load orders up-front so "Message Staff" knows if there's an active order
@@ -104,6 +108,9 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   }
 
   void _handleAddToCart(MenuItem item) {
+    // Adding to cart stays allowed even outside business hours — only placing
+    // the order is blocked (cart / checkout / backend all enforce that).
+
     // If the item has variants, open the detail sheet so the customer can pick.
     // Otherwise, add directly to cart (existing fast-add behaviour).
     if (item.hasVariants) {
@@ -115,6 +122,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
 
   void _addToCartQuantity(MenuItem item, MenuItemVariant? variant, int quantity) {
     if (quantity <= 0) return;
+
     final cart = context.read<CartProvider>();
     for (var i = 0; i < quantity; i++) {
       cart.addItem(item, variant: variant);
@@ -251,6 +259,8 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   // ─── ALL tab: featured hero + vertical sections ────────────────────────────
   Widget _buildAllSectionsView(BuildContext context, MenuProvider menuProvider) {
     final cats = menuProvider.categories;
+    final isClosed =
+        context.watch<BusinessHoursProvider>().isKnownClosed;
 
     // Featured picks — first available item from each category for variety.
     final featured = <MenuItem>[];
@@ -269,6 +279,12 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
         controller: _scrollController,
         padding: const EdgeInsets.only(bottom: 120),
         children: [
+          if (isClosed)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+              child: BusinessHoursBanner(),
+            ),
           if (featured.isNotEmpty)
             _FeaturedSection(
               items: featured,
@@ -691,33 +707,45 @@ class _OpenNowPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.gold.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-        border:
-        Border.all(color: AppColors.gold.withOpacity(0.5), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5,
-            height: 5,
-            decoration: const BoxDecoration(
-                color: AppColors.gold, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'Open Now',
-            style: GoogleFonts.karla(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: AppColors.gold,
+    final hours = context.watch<BusinessHoursProvider>();
+    final isOpen = hours.isOpen;
+    // Lighter red reads better on the dark maroon header than AppColors.error.
+    const closedColor = Color(0xFFFF8A80);
+    final color = isOpen ? AppColors.gold : closedColor;
+    final label = isOpen ? 'Open Now' : 'Closed';
+    final detail = hours.hasStatus
+        ? '${hours.message}\n${hours.status!.scheduleLabel}'
+        : 'Checking business hours…';
+
+    return Tooltip(
+      message: detail,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          border: Border.all(color: color.withOpacity(0.5), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                  color: color, shape: BoxShape.circle),
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: GoogleFonts.karla(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

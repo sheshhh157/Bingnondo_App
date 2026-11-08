@@ -5,9 +5,11 @@ import 'package:provider/provider.dart';
 import '../../models/cart_models.dart';
 import '../../models/menu_models.dart';
 import '../../services/cart_provider.dart';
+import '../../services/business_hours_provider.dart';
 import '../../services/menu_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
+import '../../widgets/business_hours_banner.dart';
 import 'checkout_screen.dart';
 import '../profile/complete_profile_screen.dart';
 
@@ -42,6 +44,13 @@ class _CartScreenState extends State<CartScreen>
   Future<void> _handleProceed(BuildContext context) async {
     final cart = context.read<CartProvider>();
     final menu = context.read<MenuProvider>();
+
+    // Business hours gate — no checkout outside the order window.
+    final hours = context.read<BusinessHoursProvider>();
+    if (hours.isKnownClosed) {
+      _showClosedDialog(context, hours);
+      return;
+    }
 
     // Check for unavailable items before even hitting the API
     final unavailableIds = cart.getUnavailableItemIds(menu.allItems);
@@ -80,6 +89,58 @@ class _CartScreenState extends State<CartScreen>
           child: child,
         ),
         transitionDuration: const Duration(milliseconds: 350),
+      ),
+    );
+  }
+
+  void _showClosedDialog(
+      BuildContext context, BusinessHoursProvider hours) {
+    final today = hours.status?.today;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.background,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.lg)),
+        title: Row(
+          children: [
+            const Icon(Icons.lock_clock_rounded,
+                color: AppColors.error, size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('We are closed',
+                  style: AppTextStyles.headline(context)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              hours.message,
+              style: AppTextStyles.bodyMedium(context),
+            ),
+            if (today != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Today: ${today.hoursLabel}',
+                style: AppTextStyles.caption(context),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'You can keep your items in the cart and check out once we reopen.',
+              style: AppTextStyles.bodySmall(context),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK', style: AppTextStyles.link(context)),
+          ),
+        ],
       ),
     );
   }
@@ -437,6 +498,7 @@ class _CartScreenState extends State<CartScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          const BusinessHoursBanner(compact: true),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

@@ -54,7 +54,6 @@ extension OrderStatusX on OrderStatus {
     }
   }
 
-  // Index in timeline (0-based, excluding cancelled)
   int get timelineIndex {
     switch (this) {
       case OrderStatus.pending:        return 0;
@@ -92,10 +91,10 @@ class OrderedItem {
   double get subtotal => unitPrice * quantity;
 
   factory OrderedItem.fromJson(Map<String, dynamic> json) => OrderedItem(
-    menuItemId: json['menu_item_id'] as int,
-    name: json['name'] as String,
-    quantity: json['quantity'] as int,
-    unitPrice: (json['unit_price'] as num).toDouble(),
+    menuItemId: json['menu_item_id'] as int? ?? json['id'] as int? ?? 0,
+    name: json['name'] as String? ?? 'Item',
+    quantity: json['quantity'] as int? ?? 1,
+    unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
     note: json['note'] as String?,
   );
 }
@@ -136,71 +135,60 @@ class OrderDetail {
   final String orderNumber;
   final OrderStatus status;
   final String paymentMethod;
+  final String? paymentStatus;
+  final String? rejectionReason;
   final double totalAmount;
   final List<OrderedItem> items;
   final String? notes;
   final DeliveryInfo? delivery;
   final DateTime createdAt;
   final DateTime? updatedAt;
-  // Payment details
-  final String? paymentStatus;    // 'pending' | 'awaiting_verification' | 'paid' | 'rejected'
-  final String? rejectionReason;  // set by staff when payment is rejected
-  final String? receiptImageUrl;  // current receipt on file
 
   const OrderDetail({
     required this.id,
     required this.orderNumber,
     required this.status,
     required this.paymentMethod,
+    this.paymentStatus,
+    this.rejectionReason,
     required this.totalAmount,
     required this.items,
     this.notes,
     this.delivery,
     required this.createdAt,
     this.updatedAt,
-    this.paymentStatus,
-    this.rejectionReason,
-    this.receiptImageUrl,
   });
 
+  bool get isGcash => paymentMethod.toLowerCase() == 'gcash';
   bool get isPaymentRejected => paymentStatus == 'rejected';
-  bool get isGcash => paymentMethod == 'gcash';
 
   factory OrderDetail.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'] as List<dynamic>? ?? [];
 
     final statusStr = json['status'] as String? ?? 'pending';
-    OrderStatus mappedStatus;
-    switch (statusStr) {
-      case 'confirmed': mappedStatus = OrderStatus.confirmed; break;
-      case 'preparing': mappedStatus = OrderStatus.preparing; break;
-      case 'ready':     mappedStatus = OrderStatus.ready; break;
-      case 'out_for_delivery': mappedStatus = OrderStatus.outForDelivery; break;
-      case 'completed': mappedStatus = OrderStatus.completed; break;
-      case 'cancelled': mappedStatus = OrderStatus.cancelled; break;
-      default:          mappedStatus = OrderStatus.pending;
-    }
+    OrderStatus mappedStatus = OrderStatusX.fromString(statusStr);
 
     return OrderDetail(
-      id:             json['id'] as int,
-      orderNumber:    json['order_number'] as String,
-      status:         mappedStatus,
-      paymentMethod:  json['payment_method'] as String? ?? 'cod',
-      totalAmount:    double.tryParse(json['total_amount'].toString()) ?? 0.0,
+      id: json['id'] as int? ?? 0,
+      orderNumber: json['order_number'] as String? ?? 'BNG-00000000-0000',
+      status: mappedStatus,
+      paymentMethod: json['payment_method'] as String? ?? 'cod',
+      paymentStatus: json['payment_status'] as String?,
+      rejectionReason: json['rejection_reason'] as String?,
+      totalAmount: double.tryParse(json['total_amount'].toString()) ?? 0.0,
       items: rawItems
           .map((i) => OrderedItem.fromJson(i as Map<String, dynamic>))
           .toList(),
-      notes:          json['notes'] as String?,
-      delivery:       json['delivery'] != null
+      notes: json['notes'] as String?,
+      delivery: json['delivery'] != null
           ? DeliveryInfo.fromJson(json['delivery'] as Map<String, dynamic>)
           : null,
-      createdAt:      DateTime.parse(json['created_at'] as String),
-      updatedAt:      json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
+      createdAt: json['created_at'] != null
+          ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.tryParse(json['updated_at'] as String)
           : null,
-      paymentStatus:  json['payment_status']  as String?,
-      rejectionReason: json['rejection_reason'] as String?,
-      receiptImageUrl: json['receipt_image_url'] as String?,
     );
   }
 }
@@ -227,11 +215,13 @@ class SupportMessage {
   });
 
   factory SupportMessage.fromJson(Map<String, dynamic> json) => SupportMessage(
-    id: json['id'] as int,
-    content: json['content'] as String,
+    id: json['id'] as int? ?? 0,
+    content: json['content'] as String? ?? '',
     isFromCustomer: json['sender_type'] == 'customer',
     relatedOrderId: json['related_order_id'] as int?,
-    sentAt: DateTime.parse(json['sent_at'] as String),
+    sentAt: json['sent_at'] != null
+        ? DateTime.tryParse(json['sent_at'] as String) ?? DateTime.now()
+        : DateTime.now(),
     isRead: json['is_read'] as bool? ?? false,
   );
 }
@@ -254,7 +244,7 @@ class SupportChat {
         .map((m) => SupportMessage.fromJson(m as Map<String, dynamic>))
         .toList();
     return SupportChat(
-      id: json['id'] as int,
+      id: json['id'] as int? ?? 0,
       status: (json['status'] as String?) == 'locked'
           ? ChatStatus.locked
           : ChatStatus.unlocked,
@@ -266,10 +256,8 @@ class SupportChat {
   bool get isLocked => status == ChatStatus.locked;
 }
 
-// ─── §1.6 Timeline Models ──────────────────────────────────────────────────────
-// NEW — added for GET /api/orders/:id/timeline
+// ─── Timeline Models ──────────────────────────────────────────────────────────
 
-/// One step in the order status timeline stepper.
 class TimelineStep {
   final String status;
   final String label;
@@ -286,8 +274,8 @@ class TimelineStep {
   });
 
   factory TimelineStep.fromJson(Map<String, dynamic> json) => TimelineStep(
-    status:      json['status']       as String,
-    label:       json['label']        as String,
+    status:      json['status']       as String? ?? 'pending',
+    label:       json['label']        as String? ?? 'Step',
     changedAt:   json['changed_at'] != null
         ? DateTime.tryParse(json['changed_at'] as String)
         : null,
@@ -296,7 +284,6 @@ class TimelineStep {
   );
 }
 
-/// Full timeline response from GET /api/orders/:id/timeline
 class OrderTimeline {
   final int orderId;
   final String orderNumber;
@@ -311,10 +298,10 @@ class OrderTimeline {
   });
 
   factory OrderTimeline.fromJson(Map<String, dynamic> json) => OrderTimeline(
-    orderId:       json['order_id']       as int,
-    orderNumber:   json['order_number']   as String,
-    currentStatus: json['current_status'] as String,
-    steps: (json['timeline'] as List<dynamic>)
+    orderId:       json['order_id']       as int? ?? 0,
+    orderNumber:   json['order_number']   as String? ?? '',
+    currentStatus: json['current_status'] as String? ?? 'pending',
+    steps: (json['timeline'] as List<dynamic>? ?? [])
         .map((e) => TimelineStep.fromJson(e as Map<String, dynamic>))
         .toList(),
   );
@@ -323,7 +310,6 @@ class OrderTimeline {
       steps.where((s) => s.isCurrent).firstOrNull;
 }
 
-/// Lightweight poll response from GET /api/orders/:id/status
 class OrderStatusPoll {
   final int id;
   final String status;
@@ -338,9 +324,42 @@ class OrderStatusPoll {
   });
 
   factory OrderStatusPoll.fromJson(Map<String, dynamic> json) => OrderStatusPoll(
-    id:            json['id']             as int,
-    status:        json['status']         as String,
+    id:            json['id']             as int? ?? 0,
+    status:        json['status']         as String? ?? 'pending',
     canCancel:     json['can_cancel']     as bool? ?? false,
     paymentStatus: json['payment_status'] as String?,
+  );
+}
+
+// ─── §1.9 Rider Live Location Model ───────────────────────────────────────────
+
+class RiderLocation {
+  final int orderId;
+  final int riderId;
+  final double latitude;
+  final double longitude;
+  final double? accuracy;
+  final DateTime? updatedAt;
+
+  const RiderLocation({
+    required this.orderId,
+    required this.riderId,
+    required this.latitude,
+    required this.longitude,
+    this.accuracy,
+    this.updatedAt,
+  });
+
+  factory RiderLocation.fromJson(Map<String, dynamic> json) => RiderLocation(
+    orderId:   json['order_id']  as int? ?? 0,
+    riderId:   json['rider_id']  as int? ?? 0,
+    latitude:  (json['latitude']  as num?)?.toDouble() ?? 0.0,
+    longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+    accuracy:  json['accuracy'] != null
+        ? (json['accuracy'] as num).toDouble()
+        : null,
+    updatedAt: json['updated_at'] != null
+        ? DateTime.tryParse(json['updated_at'] as String)
+        : null,
   );
 }

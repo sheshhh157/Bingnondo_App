@@ -8,34 +8,47 @@ import 'socket_service.dart';
 enum TrackingLoadState { initial, loading, loaded, error }
 
 class OrderTrackingProvider extends ChangeNotifier {
-  OrderDetail?   _order;
-  OrderTimeline? _timeline;         // §1.6 NEW
+  OrderDetail?    _order;
+  OrderTimeline?  _timeline;
+  RiderLocation?  _riderLocation;        // §1.9 NEW
+
   TrackingLoadState _state = TrackingLoadState.initial;
   String? _errorMessage;
   bool _isCancelling = false;
 
-  OrderDetail?   get order       => _order;
-  OrderTimeline? get timeline    => _timeline;   // §1.6 NEW
-  TrackingLoadState get state    => _state;
-  String?        get errorMessage => _errorMessage;
-  bool get isCancelling          => _isCancelling;
-  bool get isLoaded              => _state == TrackingLoadState.loaded;
+  OrderDetail?   get order          => _order;
+  OrderTimeline? get timeline       => _timeline;
+  RiderLocation? get riderLocation  => _riderLocation; // §1.9 NEW
+  TrackingLoadState get state       => _state;
+  String?        get errorMessage   => _errorMessage;
+  bool get isCancelling             => _isCancelling;
+  bool get isLoaded                 => _state == TrackingLoadState.loaded;
 
-  // §1.6 polling fallback — runs every 15 s when socket is disconnected
+  // §1.9 — true when map should be shown (order is out_for_delivery + has fix)
+  bool get showRiderMap =>
+      _order?.status == OrderStatus.outForDelivery && _riderLocation != null;
+
+  // ── Polling / Socket unsubs ───────────────────────────────────────────────
   Timer?        _pollTimer;
-  VoidCallback? _unsubOrderStatus; // returned by listenOrderStatus, called in dispose
-  static const _pollInterval = Duration(seconds: 15);
+  Timer?        _locationPollTimer;        // §1.9 — location poll fallback
+  VoidCallback? _unsubOrderStatus;
+  VoidCallback? _unsubRiderLocation;      // §1.9 NEW
+
+  static const _pollInterval         = Duration(seconds: 15);
+  static const _locationPollInterval = Duration(seconds: 10); // §1.9
 
   OrderTrackingProvider() {
-    // Hook into Socket.io `order_status_update` events.
-    // listenOrderStatus() returns an unsubscribe callback — store it for dispose().
     _unsubOrderStatus =
         SocketService.instance.listenOrderStatus(_handleSocketData);
+    _unsubRiderLocation =                               // §1.9 NEW
+    SocketService.instance.listenRiderLocation(_handleRiderLocationData);
   }
+
+  // ── Socket handlers ───────────────────────────────────────────────────────
 
   void _handleSocketData(Map<String, dynamic> data) {
     try {
-      final orderId  = (data['order_id'] ?? data['id']) as int?;
+      final orderId   = (data['order_id'] ?? data['id']) as int?;
       final statusStr = (data['status'] ?? data['order_status']) as String?;
       if (orderId != null && statusStr != null) {
         _handleSocketUpdate(orderId, statusStr);
@@ -43,9 +56,26 @@ class OrderTrackingProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ── loadOrder ───────────────────────────────────────────────────────────────
-  // Called by order_tracking_screen.dart on init and from notifications/orders list.
-  // Loads detail + timeline in parallel. §1.6: timeline added.
+  // §1.9 — called by Socket.io `rider_location_update`
+  void _handleRiderLocationData(Map<String, dynamic> data) {
+    try {
+      if (_order == null) return;
+      final orderId = (data['order_id'] as num?)?.toInt();
+      if (orderId != _order!.id) return;
+
+      _riderLocation = RiderLocation.fromJson({
+        'order_id':  _order!.id,
+        'rider_id':  data['rider_id'],
+        'latitude':  data['latitude'],
+        'longitude': data['longitude'],
+        'accuracy':  data['accuracy'],
+        'updated_at': data['updated_at'],
+      });
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  // ── loadOrder ─────────────────────────────────────────────────────────────
 
   Future<void> loadOrder(int orderId) async {
     _state        = TrackingLoadState.loading;
@@ -58,7 +88,6 @@ class OrderTrackingProvider extends ChangeNotifier {
         _order    = OrderDetail.fromJson(kMockOrderDetail);
         _timeline = _buildMockTimeline(_order!);
       } else {
-        // Parallel fetch — detail + timeline
         final results = await Future.wait([
           TrackingService.instance.fetchOrder(orderId),
           TrackingService.instance.fetchOrderTimeline(orderId),
@@ -67,7 +96,13 @@ class OrderTrackingProvider extends ChangeNotifier {
         _timeline = results[1] as OrderTimeline;
       }
       _state = TrackingLoadState.loaded;
-      _startPollFallback(orderId); // §1.6: start polling after successful load
+      _startPollFallback(orderId);
+
+      // §1.9 — kick off rider location fetch if order is already out_for_delivery
+      if (_order?.status == OrderStatus.outForDelivery) {
+        await _fetchRiderLocation(orderId);
+        _startLocationPoll(orderId);
+      }
     } on TrackingApiException catch (e) {
       _errorMessage = e.message;
       _state        = TrackingLoadState.error;
@@ -78,8 +113,7 @@ class OrderTrackingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Socket update handler ───────────────────────────────────────────────────
-  // Called by Socket.io `order_status_update` — payload: { order_id, status }
+  // ── Socket order status update ────────────────────────────────────────────
 
   void _handleSocketUpdate(int orderId, String newStatus) {
     if (_order == null || _order!.id != orderId) return;
@@ -98,32 +132,68 @@ class OrderTrackingProvider extends ChangeNotifier {
       updatedAt:     DateTime.now(),
     );
 
-    // §1.6: refresh timeline from server so the stepper reflects the new step
     _refreshTimeline(orderId);
-    notifyListeners();
 
-    // Stop polling once terminal
+    // §1.9 — start/stop location tracking based on new status
+    if (updated == OrderStatus.outForDelivery) {
+      _fetchRiderLocation(orderId);
+      _startLocationPoll(orderId);
+    } else {
+      _stopLocationPoll();
+      if (updated.isFinal) {
+        _riderLocation = null; // clear map when order is done
+      }
+    }
+
+    notifyListeners();
     if (updated.isFinal) _stopPollFallback();
   }
 
-  // §1.6: fetch fresh timeline (non-blocking — failure is silent)
-  Future<void> _refreshTimeline(int orderId) async {
-    try {
-      if (!kUseMock) {
-        _timeline = await TrackingService.instance.fetchOrderTimeline(orderId);
-      } else {
-        if (_order != null) _timeline = _buildMockTimeline(_order!);
-      }
+  // ── §1.9 Rider location helpers ───────────────────────────────────────────
+
+  Future<void> _fetchRiderLocation(int orderId) async {
+    if (kUseMock) {
+      // Mock: place rider 300 m north of a fixed Manila coord
+      _riderLocation = RiderLocation(
+        orderId:   orderId,
+        riderId:   1,
+        latitude:  14.5995 + 0.003,
+        longitude: 120.9842,
+        accuracy:  10.0,
+        updatedAt: DateTime.now(),
+      );
       notifyListeners();
-    } catch (_) {}
+      return;
+    }
+    try {
+      final loc = await TrackingService.instance.fetchRiderLocation(orderId);
+      if (loc != null) {
+        _riderLocation = loc;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Silent — socket will cover it
+    }
   }
 
-  // ── §1.6 Polling fallback ───────────────────────────────────────────────────
-  // Runs every 15 s as a safety net when Socket.io is disconnected.
+  void _startLocationPoll(int orderId) {
+    _stopLocationPoll();
+    _locationPollTimer = Timer.periodic(
+      _locationPollInterval,
+          (_) => _fetchRiderLocation(orderId),
+    );
+  }
+
+  void _stopLocationPoll() {
+    _locationPollTimer?.cancel();
+    _locationPollTimer = null;
+  }
+
+  // ── Polling fallback (order status) ──────────────────────────────────────
 
   void _startPollFallback(int orderId) {
     _stopPollFallback();
-    if (_order?.status.isFinal ?? false) return; // nothing to poll
+    if (_order?.status.isFinal ?? false) return;
     _pollTimer = Timer.periodic(_pollInterval, (_) => _pollStatus(orderId));
   }
 
@@ -138,19 +208,29 @@ class OrderTrackingProvider extends ChangeNotifier {
       return;
     }
     try {
-      if (kUseMock) return; // mock: socket simulation covers it
-      final poll        = await TrackingService.instance.fetchOrderStatus(orderId);
-      final pollStatus  = OrderStatusX.fromString(poll.status);
+      if (kUseMock) return;
+      final poll       = await TrackingService.instance.fetchOrderStatus(orderId);
+      final pollStatus = OrderStatusX.fromString(poll.status);
       if (pollStatus != _order!.status) {
-        // Status changed between socket pings — do a full reload
         await loadOrder(orderId);
       }
-    } catch (_) {
-      // Silent — socket will cover it
-    }
+    } catch (_) {}
   }
 
-  // ── Cancel order ────────────────────────────────────────────────────────────
+  // ── Timeline refresh ──────────────────────────────────────────────────────
+
+  Future<void> _refreshTimeline(int orderId) async {
+    try {
+      if (!kUseMock) {
+        _timeline = await TrackingService.instance.fetchOrderTimeline(orderId);
+      } else {
+        if (_order != null) _timeline = _buildMockTimeline(_order!);
+      }
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  // ── Cancel order ──────────────────────────────────────────────────────────
 
   Future<bool> cancelOrder() async {
     if (_order == null) return false;
@@ -163,28 +243,26 @@ class OrderTrackingProvider extends ChangeNotifier {
         _handleSocketUpdate(_order!.id, 'cancelled');
       } else {
         await TrackingService.instance.cancelOrder(_order!.id);
-        // Actual status change will arrive via Socket.io
       }
       _isCancelling = false;
       notifyListeners();
       return true;
     } on TrackingApiException catch (e) {
-      _errorMessage  = e.message;
-      _isCancelling  = false;
+      _errorMessage = e.message;
+      _isCancelling = false;
       notifyListeners();
       return false;
     }
   }
 
-  // ── Refresh (pull-to-refresh / retry button) ────────────────────────────────
+  // ── Refresh ───────────────────────────────────────────────────────────────
 
   Future<void> refresh() async {
     if (_order == null) return;
     await loadOrder(_order!.id);
   }
 
-  // ── Mock timeline builder ───────────────────────────────────────────────────
-  // Generates a plausible timeline from the mock OrderDetail status.
+  // ── Mock timeline builder ─────────────────────────────────────────────────
 
   OrderTimeline _buildMockTimeline(OrderDetail order) {
     final allStatuses = [
@@ -200,8 +278,8 @@ class OrderTrackingProvider extends ChangeNotifier {
     final now        = DateTime.now();
 
     final steps = allStatuses.asMap().entries.map((e) {
-      final idx        = e.key;
-      final statusKey  = e.value.$1;
+      final idx         = e.key;
+      final statusKey   = e.value.$1;
       final statusLabel = e.value.$2;
       final isCompleted = idx <= currentIdx;
       final isCurrent   = idx == currentIdx;
@@ -249,12 +327,14 @@ class OrderTrackingProvider extends ChangeNotifier {
     );
   }
 
-  // ── Dispose ─────────────────────────────────────────────────────────────────
+  // ── Dispose ───────────────────────────────────────────────────────────────
 
   @override
   void dispose() {
     _stopPollFallback();
-    _unsubOrderStatus?.call(); // unregister from socket listener list
+    _stopLocationPoll();              // §1.9
+    _unsubOrderStatus?.call();
+    _unsubRiderLocation?.call();      // §1.9
     super.dispose();
   }
 }
