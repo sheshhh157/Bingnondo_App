@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
 import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
@@ -8,42 +9,62 @@ import '../../widgets/app_widgets.dart';
 import 'login_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  final String email;
+  /// Email address OR mobile number (09XXXXXXXXX)
+  final String contact;
   final String otp;
 
   const ResetPasswordScreen({
     super.key,
-    required this.email,
+    required this.contact,
     required this.otp,
   });
+
+  // ── Legacy constructor support: callers that pass 'email' ────────────────
+  factory ResetPasswordScreen.fromEmail({
+    required String email,
+    required String otp,
+  }) {
+    return ResetPasswordScreen(contact: email, otp: otp);
+  }
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
+  final _formKey             = GlobalKey<FormState>();
+  final _passwordController  = TextEditingController();
+  final _confirmController   = TextEditingController();
 
-  bool _isLoading = false;
-  bool _isDone = false;
+  bool _isLoading    = false;
+  bool _isDone       = false;
   String? _errorMessage;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleReset() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
+      // Set the pending contact in provider so resetPassword() knows where to send
+      context.read<AuthProvider>().setPendingContact(
+        widget.contact,
+        isMobile: _isMobile,
+      );
+
       await context.read<AuthProvider>().resetPassword(
         otp: widget.otp,
         newPassword: _passwordController.text,
       );
+
       if (!mounted) return;
       setState(() => _isDone = true);
     } on ApiException catch (e) {
@@ -57,12 +78,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _passwordController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
+  bool get _isMobile => RegExp(r'^09\d{9}$').hasMatch(widget.contact.trim());
+
+  // ─── Build ───────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -77,10 +95,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         leading: _isDone
             ? null
             : IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          color: AppColors.textPrimary,
-          onPressed: () => Navigator.pop(context),
-        ),
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                color: AppColors.textPrimary,
+                onPressed: () => Navigator.pop(context),
+              ),
         title: Text(
           'New Password',
           style: GoogleFonts.playfairDisplaySc(
@@ -98,7 +116,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             AppSpacing.lg,
             AppSpacing.xxl,
           ),
-          child: _isDone ? _buildSuccess(context) : _buildForm(context, isCompact),
+          child: _isDone
+              ? _buildSuccess(context)
+              : _buildForm(context, isCompact),
         ),
       ),
     );
@@ -135,7 +155,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   isPassword: true,
                   textInputAction: TextInputAction.next,
                   autofocus: true,
-                  prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
+                  prefixIcon: const Icon(
+                    Icons.lock_outline_rounded,
+                    size: 20,
+                    color: AppColors.gold,
+                  ),
                   validator: validatePassword,
                   autovalidateMode: AutovalidateMode.disabled,
                 ),
@@ -151,7 +175,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             controller: _confirmController,
             isPassword: true,
             textInputAction: TextInputAction.done,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
+            prefixIcon: const Icon(
+              Icons.lock_outline_rounded,
+              size: 20,
+              color: AppColors.gold,
+            ),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Please confirm your password.';
               if (v != _passwordController.text) return 'Passwords do not match.';
@@ -176,21 +204,17 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       children: [
         const SizedBox(height: AppSpacing.xxl),
 
-        // Success illustration
         Center(
           child: Container(
-            width: 100,
-            height: 100,
+            width: 100, height: 100,
             decoration: BoxDecoration(
               color: AppColors.success.withOpacity(0.1),
               shape: BoxShape.circle,
-              border: Border.all(color: AppColors.success.withOpacity(0.3), width: 2),
+              border: Border.all(
+                color: AppColors.success.withOpacity(0.3), width: 2,
+              ),
             ),
-            child: const Icon(
-              Icons.check_rounded,
-              color: AppColors.success,
-              size: 48,
-            ),
+            child: const Icon(Icons.check_rounded, color: AppColors.success, size: 48),
           ),
         ),
 
@@ -218,7 +242,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
+              (route) => false,
             );
           },
         ),

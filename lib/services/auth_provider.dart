@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api_service.dart';
 import '../mock/mock_data.dart';
-import '../services/socket_service.dart'; // §1.7 + §1.8
+import '../services/socket_service.dart';
 
 enum AuthStatus {
   initial,
@@ -13,19 +13,24 @@ enum AuthStatus {
 
 class AuthProvider extends ChangeNotifier {
   AuthStatus _status = AuthStatus.initial;
-
   CustomerUser? _user;
 
-  String? _pendingEmail;
+  // Stores email OR mobile number depending on the registration flow
+  String? _pendingContact;
 
-  AuthStatus get status => _status;
+  // Tracks whether the pending flow is mobile-based
+  bool _pendingIsMobile = false;
 
-  CustomerUser? get user => _user;
+  AuthStatus get status        => _status;
+  CustomerUser? get user       => _user;
+  String? get pendingContact   => _pendingContact;
+  bool get pendingIsMobile     => _pendingIsMobile;
 
-  String? get pendingEmail => _pendingEmail;
+  /// Legacy getter — returns pendingContact when it's an email (backward compat)
+  String? get pendingEmail =>
+      (_pendingIsMobile == false) ? _pendingContact : null;
 
-  bool get isAuthenticated =>
-      _status == AuthStatus.authenticated;
+  bool get isAuthenticated => _status == AuthStatus.authenticated;
 
   final ApiService _api = ApiService.instance;
 
@@ -55,9 +60,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       await _api.clearTokens();
-
       _status = AuthStatus.unauthenticated;
-
       notifyListeners();
     }
   }
@@ -69,10 +72,7 @@ class AuthProvider extends ChangeNotifier {
     required String password,
   }) async {
     if (kUseMock) {
-      await _mockLogin(
-        emailOrMobile,
-        password,
-      );
+      await _mockLogin(emailOrMobile, password);
       return;
     }
 
@@ -82,391 +82,300 @@ class AuthProvider extends ChangeNotifier {
     );
 
     if (response.user == null) {
-      throw const ApiException(
-        'Login failed. Please try again.',
-        statusCode: 500,
-      );
+      throw const ApiException('Login failed. Please try again.', statusCode: 500);
     }
 
     _user = response.user;
-
     _status = AuthStatus.authenticated;
-
     notifyListeners();
 
-    // §1.7 + §1.8 — join socket rooms after login
     final socket = SocketService.instance;
     socket.connect();
     socket.joinSupportRoom(_user!.id);
     socket.joinCustomerRoom(_user!.id);
   }
 
-  // ─── Sign Up ─────────────────────────────────────────────────────────────
+  // ─── Register via Email ───────────────────────────────────────────────────
 
   Future<void> register({
     required String email,
     required String password,
   }) async {
     if (kUseMock) {
-      await Future.delayed(
-        const Duration(milliseconds: 600),
-      );
-
-      _pendingEmail = email.trim().toLowerCase();
-
+      await Future.delayed(const Duration(milliseconds: 600));
+      _pendingContact  = email.trim().toLowerCase();
+      _pendingIsMobile = false;
       _status = AuthStatus.awaitingVerification;
-
       notifyListeners();
-
       return;
     }
 
-    final normalizedEmail =
-    email.trim().toLowerCase();
+    final normalizedEmail = email.trim().toLowerCase();
 
-    final response = await _api.register(
-      email: normalizedEmail,
-      password: password,
-    );
+    await _api.register(email: normalizedEmail, password: password);
 
-    if (response.user == null) {
-      throw const ApiException(
-        'Registration failed. Please try again.',
-        statusCode: 500,
-      );
-    }
-
-    _pendingEmail = normalizedEmail;
-
+    _pendingContact  = normalizedEmail;
+    _pendingIsMobile = false;
     _status = AuthStatus.awaitingVerification;
-
     notifyListeners();
   }
 
-  // ─── OTP Verification ────────────────────────────────────────────────────
+  // ─── Register via Mobile ──────────────────────────────────────────────────
 
-  Future<void> verifyOtp({
-    required String otp,
+  Future<void> registerMobile({
+    required String mobileNumber,
+    required String password,
   }) async {
-    if (_pendingEmail == null) {
-      throw const ApiException(
-        'Session expired. Please sign up again.',
-      );
+    if (kUseMock) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      _pendingContact  = mobileNumber.trim();
+      _pendingIsMobile = true;
+      _status = AuthStatus.awaitingVerification;
+      notifyListeners();
+      return;
+    }
+
+    await _api.registerMobile(
+      mobileNumber: mobileNumber.trim(),
+      password: password,
+    );
+
+    _pendingContact  = mobileNumber.trim();
+    _pendingIsMobile = true;
+    _status = AuthStatus.awaitingVerification;
+    notifyListeners();
+  }
+
+  // ─── OTP Verification (email or mobile) ──────────────────────────────────
+
+  Future<void> verifyOtp({required String otp}) async {
+    if (_pendingContact == null) {
+      throw const ApiException('Session expired. Please sign up again.');
     }
 
     if (kUseMock) {
-      await Future.delayed(
-        const Duration(milliseconds: 600),
-      );
-
-      if (otp.length == 6) {
-        return;
-      }
-
-      throw const ApiException(
-        'Invalid OTP.',
-        statusCode: 422,
-      );
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (otp.length == 6) return;
+      throw const ApiException('Invalid OTP.', statusCode: 422);
     }
 
+    final purpose = _pendingIsMobile
+        ? 'mobile_verification'
+        : 'email_verification';
+
     final response = await _api.verifyOtp(
-      email: _pendingEmail!,
+      contact: _pendingContact!,
       otp: otp,
-      purpose: 'email_verification',
+      purpose: purpose,
     );
 
     if (response.user == null) {
-      throw const ApiException(
-        'Verification failed. Please try again.',
-        statusCode: 500,
-      );
+      throw const ApiException('Verification failed. Please try again.', statusCode: 500);
     }
 
     await _api.clearTokens();
-
-    _user = null;
-
+    _user   = null;
     _status = AuthStatus.unauthenticated;
-
     notifyListeners();
   }
 
   // ─── Password Reset OTP Verification ─────────────────────────────────────
 
   Future<void> verifyPasswordResetOtp({
-    required String email,
+    required String contact,
     required String otp,
   }) async {
-    final normalizedEmail =
-    email.trim().toLowerCase();
+    final normalizedContact = contact.trim().toLowerCase();
+    final normalizedOtp     = otp.trim();
 
-    final normalizedOtp =
-    otp.trim();
-
-    if (normalizedEmail.isEmpty) {
-      throw const ApiException(
-        'Email address is required.',
-        statusCode: 422,
-      );
+    if (normalizedContact.isEmpty) {
+      throw const ApiException('Contact is required.', statusCode: 422);
     }
-
     if (normalizedOtp.length != 6) {
-      throw const ApiException(
-        'Please enter the 6-digit OTP.',
-        statusCode: 422,
-      );
+      throw const ApiException('Please enter the 6-digit OTP.', statusCode: 422);
     }
 
     if (kUseMock) {
-      await Future.delayed(
-        const Duration(milliseconds: 500),
-      );
-
+      await Future.delayed(const Duration(milliseconds: 500));
       return;
     }
 
-    /*
-     * IMPORTANT:
-     *
-     * This specifically verifies a PASSWORD RESET OTP.
-     *
-     * It does NOT use the normal email-verification
-     * endpoint behavior.
-     *
-     * ApiService sends:
-     *
-     * purpose = password_reset
-     */
     await _api.verifyPasswordResetOtp(
-      email: normalizedEmail,
+      contact: normalizedContact,
       otp: normalizedOtp,
     );
   }
 
-  // ─── Resend Email Verification OTP ───────────────────────────────────────
+  // ─── Resend OTP ───────────────────────────────────────────────────────────
 
   Future<void> resendOtp() async {
-    if (_pendingEmail == null) {
-      throw const ApiException(
-        'Session expired. Please sign up again.',
-      );
+    if (_pendingContact == null) {
+      throw const ApiException('Session expired. Please sign up again.');
     }
 
     if (kUseMock) {
-      await Future.delayed(
-        const Duration(milliseconds: 400),
-      );
-
+      await Future.delayed(const Duration(milliseconds: 400));
       return;
     }
 
-    /*
-     * This method is ONLY for normal
-     * email verification.
-     */
-    await _api.resendOtp(
-      email: _pendingEmail!,
-      purpose: 'email_verification',
-    );
+    final purpose = _pendingIsMobile
+        ? 'mobile_verification'
+        : 'email_verification';
+
+    await _api.resendOtp(contact: _pendingContact!, purpose: purpose);
   }
 
   // ─── Resend Password Reset OTP ───────────────────────────────────────────
 
-  Future<void> resendPasswordResetOtp({
-    required String email,
-  }) async {
-    final normalizedEmail =
-    email.trim().toLowerCase();
+  Future<void> resendPasswordResetOtp({required String contact}) async {
+    final normalizedContact = contact.trim().toLowerCase();
 
-    if (normalizedEmail.isEmpty) {
-      throw const ApiException(
-        'Email address is required.',
-        statusCode: 422,
-      );
+    if (normalizedContact.isEmpty) {
+      throw const ApiException('Contact is required.', statusCode: 422);
     }
 
     if (kUseMock) {
-      await Future.delayed(
-        const Duration(milliseconds: 400),
-      );
-
-      _pendingEmail = normalizedEmail;
-
+      await Future.delayed(const Duration(milliseconds: 400));
+      _pendingContact = normalizedContact;
       notifyListeners();
-
       return;
     }
 
-    /*
-     * IMPORTANT:
-     *
-     * Forgot Password MUST resend using:
-     *
-     * purpose = password_reset
-     *
-     * This prevents the new OTP from accidentally
-     * being created as email_verification.
-     */
     await _api.resendOtp(
-      email: normalizedEmail,
+      contact: normalizedContact,
       purpose: 'password_reset',
     );
 
-    _pendingEmail = normalizedEmail;
-
+    _pendingContact = normalizedContact;
     notifyListeners();
   }
 
-  // ─── Forgot Password ─────────────────────────────────────────────────────
+  // ─── Forgot Password via Email ────────────────────────────────────────────
 
-  Future<void> forgotPassword({
-    required String email,
-  }) async {
-    final normalizedEmail =
-    email.trim().toLowerCase();
+  Future<void> forgotPassword({required String email}) async {
+    final normalizedEmail = email.trim().toLowerCase();
 
     if (normalizedEmail.isEmpty) {
-      throw const ApiException(
-        'Email address is required.',
-        statusCode: 422,
-      );
+      throw const ApiException('Email address is required.', statusCode: 422);
     }
 
     if (kUseMock) {
-      await Future.delayed(
-        const Duration(milliseconds: 600),
-      );
-
-      _pendingEmail = normalizedEmail;
-
+      await Future.delayed(const Duration(milliseconds: 600));
+      _pendingContact  = normalizedEmail;
+      _pendingIsMobile = false;
       notifyListeners();
-
       return;
     }
 
-    /*
-     * The backend checks whether the account exists.
-     *
-     * Existing account:
-     *     request succeeds
-     *
-     * Non-existing account:
-     *     backend returns 404
-     *
-     * If the backend returns 404, this function throws
-     * and the code below is NOT executed.
-     */
-    await _api.forgotPassword(
-      email: normalizedEmail,
-    );
+    await _api.forgotPassword(email: normalizedEmail);
 
-    /*
-     * Reached ONLY when the backend successfully
-     * processed the password reset request.
-     */
-    _pendingEmail = normalizedEmail;
-
+    _pendingContact  = normalizedEmail;
+    _pendingIsMobile = false;
     notifyListeners();
   }
 
-  // ─── Reset Password ──────────────────────────────────────────────────────
+  // ─── Forgot Password via Mobile ───────────────────────────────────────────
+
+  Future<void> forgotPasswordMobile({required String mobileNumber}) async {
+    final normalized = mobileNumber.trim();
+
+    if (normalized.isEmpty) {
+      throw const ApiException('Mobile number is required.', statusCode: 422);
+    }
+
+    if (kUseMock) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      _pendingContact  = normalized;
+      _pendingIsMobile = true;
+      notifyListeners();
+      return;
+    }
+
+    await _api.forgotPasswordMobile(mobileNumber: normalized);
+
+    _pendingContact  = normalized;
+    _pendingIsMobile = true;
+    notifyListeners();
+  }
+
+  // ─── Reset Password ───────────────────────────────────────────────────────
 
   Future<void> resetPassword({
     required String otp,
     required String newPassword,
   }) async {
-    if (_pendingEmail == null) {
-      throw const ApiException(
-        'Session expired.',
-      );
+    if (_pendingContact == null) {
+      throw const ApiException('Session expired.');
     }
 
-    final normalizedOtp =
-    otp.trim();
-
+    final normalizedOtp = otp.trim();
     if (normalizedOtp.length != 6) {
-      throw const ApiException(
-        'Please enter the 6-digit OTP.',
-        statusCode: 422,
-      );
+      throw const ApiException('Please enter the 6-digit OTP.', statusCode: 422);
     }
 
     if (kUseMock) {
-      await Future.delayed(
-        const Duration(milliseconds: 600),
-      );
-
-      _pendingEmail = null;
-
+      await Future.delayed(const Duration(milliseconds: 600));
+      _pendingContact = null;
       notifyListeners();
-
       return;
     }
 
     await _api.resetPassword(
-      email: _pendingEmail!,
-      otp: normalizedOtp,
+      contact:     _pendingContact!,
+      otp:         normalizedOtp,
       newPassword: newPassword,
     );
 
-    _pendingEmail = null;
-
+    _pendingContact  = null;
+    _pendingIsMobile = false;
     notifyListeners();
   }
 
   // ─── Logout ──────────────────────────────────────────────────────────────
 
   Future<void> logout() async {
-    if (!kUseMock) {
-      await _api.clearTokens();
-    }
+    if (!kUseMock) await _api.clearTokens();
 
-    // §1.7 + §1.8 — disconnect socket on logout
     SocketService.instance.disconnect();
 
-    _user = null;
-
-    _pendingEmail = null;
-
-    _status = AuthStatus.unauthenticated;
-
+    _user            = null;
+    _pendingContact  = null;
+    _pendingIsMobile = false;
+    _status          = AuthStatus.unauthenticated;
     notifyListeners();
   }
 
-  // ─── Pending Email ───────────────────────────────────────────────────────
+  // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  void setPendingEmail(String email) {
-    _pendingEmail =
-        email.trim().toLowerCase();
-
+  void setPendingContact(String contact, {bool isMobile = false}) {
+    _pendingContact  = contact.trim().toLowerCase();
+    _pendingIsMobile = isMobile;
     notifyListeners();
   }
+
+  // Legacy compat
+  void setPendingEmail(String email) => setPendingContact(email);
 
   // ─── Mock Login ──────────────────────────────────────────────────────────
 
-  Future<void> _mockLogin(
-      String emailOrMobile,
-      String password,
-      ) async {
-    await Future.delayed(
-      const Duration(milliseconds: 600),
-    );
+  Future<void> _mockLogin(String emailOrMobile, String password) async {
+    await Future.delayed(const Duration(milliseconds: 600));
 
     _user = CustomerUser(
       id: 1,
-      email: emailOrMobile,
-      emailVerified: true,
+      email: emailOrMobile.contains('@') ? emailOrMobile : null,
+      mobileNumber: emailOrMobile.contains('@') ? null : emailOrMobile,
+      emailVerified:    true,
+      mobileVerified:   true,
       profileCompleted: true,
-      status: 'active',
-      firstName: 'Test',
-      lastName: 'User',
+      status:           'active',
+      firstName:        'Test',
+      lastName:         'User',
     );
 
     _status = AuthStatus.authenticated;
-
     notifyListeners();
 
-    // §1.7 + §1.8 — join socket rooms after mock login
     final socket = SocketService.instance;
     socket.connect();
     socket.joinSupportRoom(_user!.id);

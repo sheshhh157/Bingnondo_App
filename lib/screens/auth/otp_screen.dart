@@ -13,94 +13,78 @@ import '../../widgets/app_widgets.dart';
 import 'login_screen.dart';
 
 class OtpScreen extends StatefulWidget {
-  final String email;
+  /// Email address OR mobile number (09XXXXXXXXX)
+  final String contact;
+
+  /// True if contact is a mobile number
+  final bool isMobile;
+
+  /// True if this OTP is for a password reset flow
   final bool isPasswordReset;
 
   const OtpScreen({
     super.key,
-    required this.email,
+    required this.contact,
+    this.isMobile = false,
     this.isPasswordReset = false,
   });
+
+  // ── Legacy constructor support (email-only callers) ──────────────────────
+  factory OtpScreen.email({
+    required String email,
+    bool isPasswordReset = false,
+  }) {
+    return OtpScreen(
+      contact: email,
+      isMobile: false,
+      isPasswordReset: isPasswordReset,
+    );
+  }
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
-class _OtpScreenState extends State<OtpScreen>
-    with TickerProviderStateMixin {
+class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   final _otpController = TextEditingController();
 
-  String _currentOtp = '';
-
-  bool _isVerifying = false;
-  bool _isResending = false;
-  bool _blockAutoVerify = false;
-  bool _isVerified = false;
-
+  String _currentOtp     = '';
+  bool _isVerifying      = false;
+  bool _isResending      = false;
+  bool _blockAutoVerify  = false;
+  bool _isVerified       = false;
   String? _errorMessage;
   String? _successMessage;
 
   static const int _resendSeconds = 60;
   int _countdown = _resendSeconds;
-
   Timer? _timer;
 
   late final AnimationController _shakeController;
-  late final Animation<double> _shakeAnim;
-
+  late final Animation<double>   _shakeAnim;
   late final AnimationController _fadeController;
-  late final Animation<double> _fadeAnim;
+  late final Animation<double>   _fadeAnim;
 
   @override
   void initState() {
     super.initState();
 
-    // Fade animation
     _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
+      vsync: this, duration: const Duration(milliseconds: 500),
     );
-
-    _fadeAnim = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
-    );
-
+    _fadeAnim = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
     _fadeController.forward();
 
-    // Shake animation for invalid OTP
     _shakeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
+      vsync: this, duration: const Duration(milliseconds: 400),
     );
-
     _shakeAnim = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 0, end: -8),
-        weight: 1,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: -8, end: 8),
-        weight: 2,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 8, end: -6),
-        weight: 2,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: -6, end: 6),
-        weight: 2,
-      ),
-      TweenSequenceItem(
-        tween: Tween(begin: 6, end: 0),
-        weight: 1,
-      ),
-    ]).animate(
-      CurvedAnimation(
-        parent: _shakeController,
-        curve: Curves.easeInOut,
-      ),
-    );
+      TweenSequenceItem(tween: Tween(begin: 0, end: -8),  weight: 1),
+      TweenSequenceItem(tween: Tween(begin: -8, end: 8),  weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 8, end: -6),  weight: 2),
+      TweenSequenceItem(tween: Tween(begin: -6, end: 6),  weight: 2),
+      TweenSequenceItem(tween: Tween(begin: 6, end: 0),   weight: 1),
+    ]).animate(CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut));
 
     _startCountdown();
   }
@@ -111,232 +95,155 @@ class _OtpScreenState extends State<OtpScreen>
     _fadeController.dispose();
     _shakeController.dispose();
     _otpController.dispose();
-
     super.dispose();
   }
 
+  // ─── Countdown ──────────────────────────────────────────────────────────
+
   void _startCountdown() {
     _timer?.cancel();
+    setState(() => _countdown = _resendSeconds);
 
-    setState(() {
-      _countdown = _resendSeconds;
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_countdown <= 1) {
+        timer.cancel();
+        if (mounted) setState(() => _countdown = 0);
+      } else {
+        if (mounted) setState(() => _countdown--);
+      }
     });
-
-    _timer = Timer.periodic(
-      const Duration(seconds: 1),
-          (timer) {
-        if (_countdown <= 1) {
-          timer.cancel();
-
-          if (mounted) {
-            setState(() {
-              _countdown = 0;
-            });
-          }
-        } else {
-          if (mounted) {
-            setState(() {
-              _countdown--;
-            });
-          }
-        }
-      },
-    );
   }
 
+  // ─── Verify ─────────────────────────────────────────────────────────────
+
   Future<void> _handleVerify() async {
-    if (_currentOtp.length < 6 ||
-        _isVerifying ||
-        _blockAutoVerify) {
-      return;
-    }
+    if (_currentOtp.length < 6 || _isVerifying || _blockAutoVerify) return;
 
     FocusScope.of(context).unfocus();
-
-    setState(() {
-      _isVerifying = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
+    setState(() { _isVerifying = true; _errorMessage = null; _successMessage = null; });
 
     try {
       if (widget.isPasswordReset) {
         await context.read<AuthProvider>().verifyPasswordResetOtp(
-          email: widget.email,
+          contact: widget.contact,
           otp: _currentOtp,
         );
 
         if (!mounted) return;
-
-        setState(() {
-          _successMessage = 'OTP verified! Redirecting...';
-        });
-
-        await Future.delayed(
-          const Duration(milliseconds: 1200),
-        );
-
+        setState(() => _successMessage = 'OTP verified! Redirecting...');
+        await Future.delayed(const Duration(milliseconds: 1200));
         if (!mounted) return;
 
         Navigator.pop(context, _currentOtp);
       } else {
-        await context.read<AuthProvider>().verifyOtp(
-          otp: _currentOtp,
-        );
+        await context.read<AuthProvider>().verifyOtp(otp: _currentOtp);
 
         if (!mounted) return;
-
         setState(() {
-          _successMessage =
-          'Email verified successfully!';
+          _successMessage = widget.isMobile
+              ? 'Mobile number verified!'
+              : 'Email verified successfully!';
           _isVerified = true;
         });
       }
     } on ApiException catch (e) {
       if (!mounted) return;
-
       _shakeController.forward(from: 0);
-
       setState(() {
         _errorMessage = e.message.contains('expired')
             ? 'OTP has expired. Please request a new one.'
-            : e.message.contains('invalid') ||
-            e.message.contains('incorrect') ||
-            e.message.contains('Incorrect')
-            ? 'Incorrect OTP. Please try again.'
-            : e.message;
-
-        _currentOtp = '';
+            : (e.message.contains('invalid') || e.message.toLowerCase().contains('incorrect'))
+                ? 'Incorrect OTP. Please try again.'
+                : e.message;
+        _currentOtp      = '';
         _blockAutoVerify = true;
       });
-
       _otpController.clear();
     } catch (_) {
       if (!mounted) return;
-
       setState(() {
-        _errorMessage =
-        'Something went wrong. Please try again.';
-
-        _currentOtp = '';
+        _errorMessage    = 'Something went wrong. Please try again.';
+        _currentOtp      = '';
         _blockAutoVerify = true;
       });
-
       _otpController.clear();
     } finally {
-      if (mounted) {
-        setState(() {
-          _isVerifying = false;
-        });
-      }
+      if (mounted) setState(() => _isVerifying = false);
     }
   }
 
-  Future<void> _handleResend() async {
-    if (_countdown > 0 || _isResending) {
-      return;
-    }
+  // ─── Resend ─────────────────────────────────────────────────────────────
 
-    setState(() {
-      _isResending = true;
-      _errorMessage = null;
-      _successMessage = null;
-      _blockAutoVerify = false;
-    });
+  Future<void> _handleResend() async {
+    if (_countdown > 0 || _isResending) return;
+
+    setState(() { _isResending = true; _errorMessage = null; _successMessage = null; _blockAutoVerify = false; });
 
     try {
       if (widget.isPasswordReset) {
-        await context
-            .read<AuthProvider>()
-            .resendPasswordResetOtp(
-          email: widget.email,
+        await context.read<AuthProvider>().resendPasswordResetOtp(
+          contact: widget.contact,
         );
       } else {
-        await context
-            .read<AuthProvider>()
-            .resendOtp();
+        await context.read<AuthProvider>().resendOtp();
       }
 
       if (!mounted) return;
-
       setState(() {
-        _successMessage =
-        'New OTP sent to ${_maskEmail(widget.email)}.';
-        _currentOtp = '';
+        _successMessage = 'New OTP sent to ${_maskContact(widget.contact)}.';
+        _currentOtp     = '';
       });
-
       _otpController.clear();
-
       _startCountdown();
     } on ApiException catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        _errorMessage = e.message;
-      });
+      setState(() => _errorMessage = e.message);
     } catch (_) {
       if (!mounted) return;
-
-      setState(() {
-        _errorMessage =
-        'Could not resend OTP. Please try again.';
-      });
+      setState(() => _errorMessage = 'Could not resend OTP. Please try again.');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isResending = false;
-        });
-      }
+      if (mounted) setState(() => _isResending = false);
     }
   }
 
-  String _maskEmail(String email) {
-    final parts = email.split('@');
+  // ─── Mask contact for display ────────────────────────────────────────────
 
-    if (parts.length != 2) {
-      return email;
+  String _maskContact(String contact) {
+    // Mobile: 09171234567 → 09171****67
+    if (widget.isMobile) {
+      if (contact.length < 7) return contact;
+      return '${contact.substring(0, 5)}****${contact.substring(contact.length - 2)}';
     }
 
-    final name = parts[0];
+    // Email: angelo@gmail.com → an***@gmail.com
+    final parts = contact.split('@');
+    if (parts.length != 2) return contact;
+    final name   = parts[0];
     final domain = parts[1];
-
-    if (name.length <= 3) {
-      return '*${'*' * (name.length - 1)}@$domain';
-    }
-
-    return '${name.substring(0, 2)}'
-        '${'*' * (name.length - 2)}'
-        '@$domain';
+    if (name.length <= 3) return '*${'*' * (name.length - 1)}@$domain';
+    return '${name.substring(0, 2)}${'*' * (name.length - 2)}@$domain';
   }
-
-  // ============================================================
-  // GO TO SIGN IN
-  // ============================================================
 
   void _goToSignIn() {
     if (!mounted) return;
-
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const LoginScreen(),
-      ),
-          (route) => false,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
     );
   }
 
+  // ─── Build ───────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
-    final isWide = size.width >= 600;
+    final size      = MediaQuery.of(context).size;
+    final isWide    = size.width >= 600;
     final isCompact = size.height < 680;
 
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-    );
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -344,22 +251,15 @@ class _OtpScreenState extends State<OtpScreen>
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            size: 18,
-          ),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
           color: AppColors.textPrimary,
           onPressed: () => Navigator.pop(context),
           tooltip: 'Back',
         ),
         title: Text(
-          widget.isPasswordReset
-              ? 'Reset Password'
-              : 'Verify Email',
+          widget.isPasswordReset ? 'Reset Password' : (widget.isMobile ? 'Verify Mobile' : 'Verify Email'),
           style: GoogleFonts.playfairDisplaySc(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+            fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary,
           ),
         ),
       ),
@@ -368,180 +268,119 @@ class _OtpScreenState extends State<OtpScreen>
           opacity: _fadeAnim,
           child: isWide
               ? Center(
-            child: ConstrainedBox(
-              constraints:
-              const BoxConstraints(maxWidth: 480),
-              child: _buildContent(
-                context,
-                isCompact,
-              ),
-            ),
-          )
-              : _buildContent(
-            context,
-            isCompact,
-          ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    child: _buildContent(context, isCompact),
+                  ),
+                )
+              : _buildContent(context, isCompact),
         ),
       ),
     );
   }
 
-  Widget _buildContent(
-      BuildContext context,
-      bool isCompact,
-      ) {
+  Widget _buildContent(BuildContext context, bool isCompact) {
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
         AppSpacing.lg,
-        isCompact
-            ? AppSpacing.md
-            : AppSpacing.xxl,
+        isCompact ? AppSpacing.md : AppSpacing.xxl,
         AppSpacing.lg,
         AppSpacing.xxl,
       ),
       child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            height: isCompact
-                ? AppSpacing.lg
-                : AppSpacing.xl,
+          SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
+
+          // ── Icon ──────────────────────────────────────────────────────
+          Container(
+            width: 72, height: 72,
+            decoration: BoxDecoration(
+              color: AppColors.primaryDark,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.gold, width: 2),
+            ),
+            child: Icon(
+              widget.isMobile
+                  ? Icons.phone_android_rounded
+                  : Icons.mail_outline_rounded,
+              color: AppColors.gold,
+              size: 36,
+            ),
           ),
 
+          const SizedBox(height: AppSpacing.lg),
+
           Text(
-            widget.isPasswordReset
-                ? 'Check your inbox'
-                : 'One last step',
+            widget.isPasswordReset ? 'Check your ${widget.isMobile ? 'messages' : 'inbox'}' : 'One last step',
             style: AppTextStyles.display2(context),
             textAlign: TextAlign.center,
           ),
 
-          const SizedBox(
-            height: AppSpacing.sm,
-          ),
+          const SizedBox(height: AppSpacing.sm),
 
           RichText(
             textAlign: TextAlign.center,
             text: TextSpan(
-              style: GoogleFonts.karla(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-                height: 1.5,
-              ),
+              style: GoogleFonts.karla(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
               children: [
-                const TextSpan(
-                  text: 'We sent a 6-digit code to\n',
+                TextSpan(
+                  text: widget.isMobile
+                      ? 'We sent a 6-digit code via SMS to\n'
+                      : 'We sent a 6-digit code to\n',
                 ),
                 TextSpan(
-                  text: _maskEmail(widget.email),
+                  text: _maskContact(widget.contact),
                   style: GoogleFonts.karla(
-                    fontSize: 14,
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 14, color: AppColors.primary, fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
             ),
           ),
 
-          SizedBox(
-            height: isCompact
-                ? AppSpacing.lg
-                : AppSpacing.xl,
-          ),
+          SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
 
-          // Error message
           if (_errorMessage != null) ...[
-            StatusBanner(
-              message: _errorMessage!,
-              isError: true,
-            ),
-            const SizedBox(
-              height: AppSpacing.md,
-            ),
+            StatusBanner(message: _errorMessage!, isError: true),
+            const SizedBox(height: AppSpacing.md),
           ],
 
-          // Success message
           if (_successMessage != null) ...[
-            StatusBanner(
-              message: _successMessage!,
-              isError: false,
-            ),
-            const SizedBox(
-              height: AppSpacing.md,
-            ),
+            StatusBanner(message: _successMessage!, isError: false),
+            const SizedBox(height: AppSpacing.md),
           ],
 
-          // Loading spinner
           if (_isVerifying) ...[
+            const SizedBox(height: AppSpacing.sm),
             const SizedBox(
-              height: AppSpacing.sm,
+              width: 24, height: 24,
+              child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2.5),
             ),
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-                strokeWidth: 2.5,
-              ),
-            ),
-            const SizedBox(
-              height: AppSpacing.sm,
-            ),
+            const SizedBox(height: AppSpacing.sm),
           ],
 
-          // OTP input
           if (!_isVerified)
             AnimatedBuilder(
               animation: _shakeAnim,
-              builder: (_, child) {
-                return Transform.translate(
-                  offset: Offset(
-                    _shakeAnim.value,
-                    0,
-                  ),
-                  child: child,
-                );
-              },
+              builder: (_, child) =>
+                  Transform.translate(offset: Offset(_shakeAnim.value, 0), child: child),
               child: _buildOtpField(context),
             ),
 
-          SizedBox(
-            height: isCompact
-                ? AppSpacing.lg
-                : AppSpacing.xl,
-          ),
-
-          // ======================================================
-          // VERIFIED STATE
-          // ======================================================
+          SizedBox(height: isCompact ? AppSpacing.lg : AppSpacing.xl),
 
           if (_isVerified) ...[
-            const SizedBox(
-              height: AppSpacing.md,
-            ),
-
-            PrimaryButton(
-              label: 'GO TO SIGN IN',
-              onPressed: _goToSignIn,
-            ),
-          ]
-
-          // ======================================================
-          // NOT VERIFIED STATE
-          // ======================================================
-
-          else ...[
+            const SizedBox(height: AppSpacing.md),
+            PrimaryButton(label: 'GO TO SIGN IN', onPressed: _goToSignIn),
+          ] else ...[
             _buildResendSection(context),
-
-            const SizedBox(
-              height: AppSpacing.xl,
-            ),
-
+            const SizedBox(height: AppSpacing.xl),
             Text(
-              'Check your spam folder if you don\'t see it.',
+              widget.isMobile
+                  ? 'Make sure your number is correct and has signal.'
+                  : 'Check your spam folder if you don\'t see it.',
               style: AppTextStyles.caption(context),
               textAlign: TextAlign.center,
             ),
@@ -551,282 +390,73 @@ class _OtpScreenState extends State<OtpScreen>
     );
   }
 
-  Widget _buildOtpField(
-      BuildContext context,
-      ) {
+  Widget _buildOtpField(BuildContext context) {
     return PinCodeTextField(
       appContext: context,
       length: 6,
       controller: _otpController,
       keyboardType: TextInputType.number,
       animationType: AnimationType.scale,
-      animationDuration:
-      const Duration(milliseconds: 150),
+      animationDuration: const Duration(milliseconds: 150),
       enableActiveFill: true,
       autoFocus: true,
       enabled: !_isVerifying,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-      ],
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       pinTheme: PinTheme(
         shape: PinCodeFieldShape.box,
-        borderRadius:
-        BorderRadius.circular(AppRadius.md),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         fieldHeight: 56,
         fieldWidth: 46,
-
-        activeFillColor:
-        AppColors.inputFill,
-
-        inactiveFillColor:
-        AppColors.inputFill,
-
-        selectedFillColor:
-        AppColors.surfaceWarm,
-
-        activeColor:
-        AppColors.gold,
-
-        inactiveColor:
-        AppColors.inputBorder,
-
-        selectedColor:
-        AppColors.primary,
-
+        activeFillColor:   AppColors.inputFill,
+        inactiveFillColor: AppColors.inputFill,
+        selectedFillColor: AppColors.surfaceWarm,
+        activeColor:       AppColors.gold,
+        inactiveColor:     AppColors.inputBorder,
+        selectedColor:     AppColors.primary,
         borderWidth: 2,
-
-        errorBorderColor:
-        AppColors.error,
+        errorBorderColor:  AppColors.error,
       ),
       textStyle: GoogleFonts.playfairDisplaySc(
-        fontSize: 22,
-        fontWeight: FontWeight.w700,
-        color: AppColors.primary,
-        letterSpacing: 0,
+        fontSize: 22, fontWeight: FontWeight.w700,
+        color: AppColors.primary, letterSpacing: 0,
       ),
       onChanged: (val) {
         setState(() {
           _currentOtp = val;
-
-          if (_errorMessage != null) {
-            _errorMessage = null;
-          }
-
-          if (_successMessage != null) {
-            _successMessage = null;
-          }
-
-          if (_blockAutoVerify) {
-            _blockAutoVerify = false;
-          }
+          if (_errorMessage != null)   _errorMessage   = null;
+          if (_successMessage != null) _successMessage = null;
+          if (_blockAutoVerify)        _blockAutoVerify = false;
         });
       },
       onCompleted: (_) {
-        if (!_blockAutoVerify) {
-          _handleVerify();
-        }
+        if (!_blockAutoVerify) _handleVerify();
       },
     );
   }
 
-  Widget _buildResendSection(
-      BuildContext context,
-      ) {
+  Widget _buildResendSection(BuildContext context) {
     return Column(
       children: [
-        Text(
-          'Didn\'t receive the code?',
-          style: AppTextStyles.bodyMedium(context),
-        ),
-
-        const SizedBox(
-          height: AppSpacing.sm,
-        ),
+        Text('Didn\'t receive the code?', style: AppTextStyles.bodyMedium(context)),
+        const SizedBox(height: AppSpacing.sm),
 
         _countdown > 0
             ? Text(
-          'Resend in $_countdown s',
-          style: GoogleFonts.karla(
-            fontSize: 13,
-            color: AppColors.textMuted,
-            fontWeight: FontWeight.w500,
-          ),
-        )
+                'Resend in $_countdown s',
+                style: GoogleFonts.karla(
+                  fontSize: 13, color: AppColors.textMuted, fontWeight: FontWeight.w500,
+                ),
+              )
             : GestureDetector(
-          onTap: _isResending
-              ? null
-              : _handleResend,
-          child: _isResending
-              ? const SizedBox(
-            width: 18,
-            height: 18,
-            child:
-            CircularProgressIndicator(
-              color: AppColors.gold,
-              strokeWidth: 2,
-            ),
-          )
-              : Text(
-            'Resend Code',
-            style:
-            AppTextStyles.link(context),
-          ),
-        ),
+                onTap: _isResending ? null : _handleResend,
+                child: _isResending
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(color: AppColors.gold, strokeWidth: 2),
+                      )
+                    : Text('Resend Code', style: AppTextStyles.link(context)),
+              ),
       ],
     );
-  }
-}
-
-class _BigLanternPainter extends CustomPainter {
-  @override
-  void paint(
-      Canvas canvas,
-      Size size,
-      ) {
-    final maroonFill = Paint()
-      ..color = AppColors.primaryDark
-      ..style = PaintingStyle.fill;
-
-    final goldStroke = Paint()
-      ..color = AppColors.gold
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-
-    final goldFill = Paint()
-      ..color = AppColors.gold
-      ..style = PaintingStyle.fill;
-
-    final w = size.width;
-    final h = size.height;
-
-    canvas.drawLine(
-      Offset(w / 2, 0),
-      Offset(w / 2, h * 0.08),
-      Paint()
-        ..color = AppColors.gold
-        ..strokeWidth = 1.5
-        ..strokeCap = StrokeCap.round,
-    );
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          w * 0.2,
-          h * 0.06,
-          w * 0.6,
-          h * 0.1,
-        ),
-        const Radius.circular(4),
-      ),
-      goldFill,
-    );
-
-    final bodyPath = Path()
-      ..moveTo(
-        w * 0.1,
-        h * 0.2,
-      )
-      ..quadraticBezierTo(
-        0,
-        h * 0.5,
-        w * 0.1,
-        h * 0.78,
-      )
-      ..lineTo(
-        w * 0.9,
-        h * 0.78,
-      )
-      ..quadraticBezierTo(
-        w,
-        h * 0.5,
-        w * 0.9,
-        h * 0.2,
-      )
-      ..close();
-
-    canvas.drawPath(
-      bodyPath,
-      maroonFill,
-    );
-
-    canvas.drawPath(
-      bodyPath,
-      goldStroke,
-    );
-
-    for (int i = 1; i <= 3; i++) {
-      final y =
-          h * 0.2 +
-              (h * 0.58) * (i / 4);
-
-      canvas.drawLine(
-        Offset(w * 0.1, y),
-        Offset(w * 0.9, y),
-        goldStroke
-          ..color =
-          AppColors.gold.withOpacity(0.3)
-          ..strokeWidth = 1,
-      );
-    }
-
-    canvas.drawLine(
-      Offset(w / 2, h * 0.2),
-      Offset(w / 2, h * 0.78),
-      goldStroke
-        ..color =
-        AppColors.gold.withOpacity(0.3)
-        ..strokeWidth = 1,
-    );
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          w * 0.2,
-          h * 0.76,
-          w * 0.6,
-          h * 0.08,
-        ),
-        const Radius.circular(4),
-      ),
-      goldFill,
-    );
-
-    final tasselPaint = Paint()
-      ..color = AppColors.gold
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
-
-    for (int i = 0; i < 5; i++) {
-      final x =
-          w * 0.3 + i * w * 0.1;
-
-      canvas.drawLine(
-        Offset(x, h * 0.84),
-        Offset(
-          x + (i % 2 == 0 ? -4 : 4),
-          h,
-        ),
-        tasselPaint,
-      );
-    }
-
-    canvas.drawCircle(
-      Offset(
-        w / 2,
-        h * 0.49,
-      ),
-      w * 0.06,
-      Paint()
-        ..color =
-        AppColors.goldLight.withOpacity(0.5),
-    );
-  }
-
-  @override
-  bool shouldRepaint(
-      covariant CustomPainter oldDelegate,
-      ) {
-    return false;
   }
 }

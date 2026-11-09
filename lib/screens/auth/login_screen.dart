@@ -140,17 +140,10 @@ class _LoginScreenState extends State<LoginScreen>
     }
 
     // Portrait / compact — single column with scrollable form
-    return CustomScrollView(
-      slivers: [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Column(
-            children: [
-              _buildHeader(context, isCompact),
-              Expanded(child: _buildFormPanel(context, isCompact)),
-            ],
-          ),
-        ),
+    return Column(
+      children: [
+        _buildHeader(context, isCompact),
+        Expanded(child: _buildFormPanel(context, isCompact)),
       ],
     );
   }

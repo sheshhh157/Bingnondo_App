@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -13,310 +14,240 @@ class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
   @override
-  State<ForgotPasswordScreen> createState() =>
-      _ForgotPasswordScreenState();
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     with SingleTickerProviderStateMixin {
-  final _emailController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
+  late final TabController _tabController;
 
-  bool _isLoading = false;
+  // ─── Email form ──────────────────────────────────────────────────────────
+  final _emailFormKey = GlobalKey<FormState>();
+  final _emailCtrl    = TextEditingController();
+
+  // ─── Mobile form ─────────────────────────────────────────────────────────
+  final _mobileFormKey = GlobalKey<FormState>();
+  final _mobileCtrl    = TextEditingController();
+
+  bool _isLoading     = false;
   String? _errorMessage;
-
-  late final AnimationController _fadeCtrl;
-  late final Animation<double> _fadeAnim;
 
   @override
   void initState() {
     super.initState();
-
-    _fadeCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-
-    _fadeAnim = CurvedAnimation(
-      parent: _fadeCtrl,
-      curve: Curves.easeOut,
-    );
-
-    _fadeCtrl.forward();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_errorMessage != null) setState(() => _errorMessage = null);
+    });
   }
 
   @override
   void dispose() {
-    _fadeCtrl.dispose();
-    _emailController.dispose();
+    _tabController.dispose();
+    _emailCtrl.dispose();
+    _mobileCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSubmit() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
+  // ─── Validate PH mobile ──────────────────────────────────────────────────
+
+  String? _validateMobile(String? v) {
+    if (v == null || v.trim().isEmpty) return 'Mobile number is required.';
+    final digits = v.trim().replaceAll(RegExp(r'\D'), '');
+    if (!RegExp(r'^09\d{9}$').hasMatch(digits)) {
+      return 'Enter a valid PH number (09XXXXXXXXX).';
     }
+    return null;
+  }
+
+  // ─── Submit: Email ───────────────────────────────────────────────────────
+
+  Future<void> _handleEmailSubmit() async {
+    if (!_emailFormKey.currentState!.validate()) return;
 
     FocusScope.of(context).unfocus();
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
-      final email = _emailController.text.trim();
+      final email = _emailCtrl.text.trim().toLowerCase();
 
-      // The backend checks whether this email
-      // belongs to an existing customer account.
-      await context.read<AuthProvider>().forgotPassword(
-        email: email,
-      );
+      await context.read<AuthProvider>().forgotPassword(email: email);
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      // Only navigate to OTP if the backend
-      // successfully accepted the request.
-      final otp = await Navigator.push<String>(
+      // Navigate to OTP screen for password reset (email flow)
+      final otpResult = await Navigator.push<String>(
         context,
-        MaterialPageRoute(
-          builder: (_) => OtpScreen(
-            email: email,
+        _slideRoute(
+          OtpScreen(
+            contact: email,
+            isMobile: false,
             isPasswordReset: true,
           ),
         ),
       );
 
-      if (!mounted || otp == null) {
-        return;
-      }
+      if (!mounted || otpResult == null) return;
 
-      await Navigator.pushReplacement(
+      // OTP verified — go to reset password screen
+      Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => ResetPasswordScreen(
-            email: email,
-            otp: otp,
-          ),
+        _slideRoute(
+          ResetPasswordScreen(contact: email, otp: otpResult),
         ),
       );
     } on ApiException catch (e) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _errorMessage = e.message;
-      });
+      if (!mounted) return;
+      setState(() => _errorMessage =
+          e.isNotFound ? 'No account found with that email address.' : e.message);
     } catch (_) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _errorMessage =
-        'Something went wrong. Please try again.';
-      });
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Something went wrong. Please try again.');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ─── Submit: Mobile ──────────────────────────────────────────────────────
+
+  Future<void> _handleMobileSubmit() async {
+    if (!_mobileFormKey.currentState!.validate()) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() { _isLoading = true; _errorMessage = null; });
+
+    try {
+      final mobile = _mobileCtrl.text.trim();
+
+      await context.read<AuthProvider>().forgotPasswordMobile(
+        mobileNumber: mobile,
+      );
+
+      if (!mounted) return;
+
+      // Navigate to OTP screen for password reset (mobile flow)
+      final otpResult = await Navigator.push<String>(
+        context,
+        _slideRoute(
+          OtpScreen(
+            contact: mobile,
+            isMobile: true,
+            isPasswordReset: true,
+          ),
+        ),
+      );
+
+      if (!mounted || otpResult == null) return;
+
+      // OTP verified — go to reset password screen
+      Navigator.pushReplacement(
+        context,
+        _slideRoute(
+          ResetPasswordScreen(contact: mobile, otp: otpResult),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage =
+          e.isNotFound ? 'No account found with that mobile number.' : e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Something went wrong. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  PageRouteBuilder<String> _slideRoute(Widget page) {
+    return PageRouteBuilder<String>(
+      pageBuilder: (_, anim, __) => page,
+      transitionsBuilder: (_, anim, __, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+        child: child,
+      ),
+      transitionDuration: const Duration(milliseconds: 350),
+    );
+  }
+
+  // ─── Build ───────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final isCompact =
-        MediaQuery.of(context).size.height < 680;
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ));
 
     return Scaffold(
       backgroundColor: AppColors.background,
-
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.primaryDark,
         elevation: 0,
-
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            size: 18,
-          ),
-          color: AppColors.textPrimary,
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          color: AppColors.textOnDark,
           onPressed: () => Navigator.pop(context),
         ),
-      ),
-
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnim,
-
-          child: SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              isCompact
-                  ? AppSpacing.md
-                  : AppSpacing.xxl,
-              AppSpacing.lg,
-              AppSpacing.xxl,
+        title: Text(
+          'Forgot Password',
+          style: GoogleFonts.playfairDisplaySc(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textOnDark,
+          ),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm,
             ),
-
-            child: Form(
-              key: _formKey,
-
-              child: Column(
-                crossAxisAlignment:
-                CrossAxisAlignment.start,
-
-                children: [
-                  // ======================================================
-                  // Illustration
-                  // ======================================================
-
-                  Center(
-                    child: CustomPaint(
-                      size: Size(
-                        isCompact ? 64 : 80,
-                        (isCompact ? 64 : 80) * 1.3,
-                      ),
-                      painter: _KeyPainter(),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.primaryDark.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicator: BoxDecoration(
+                  color: AppColors.gold,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                ),
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                labelColor: AppColors.primaryDark,
+                unselectedLabelColor: AppColors.textOnDark.withOpacity(0.7),
+                labelStyle: GoogleFonts.karla(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+                unselectedLabelStyle: GoogleFonts.karla(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                tabs: const [
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.mail_outline_rounded, size: 16),
+                        SizedBox(width: 6),
+                        Text('Via Email'),
+                      ],
                     ),
                   ),
-
-                  SizedBox(
-                    height: isCompact
-                        ? AppSpacing.lg
-                        : AppSpacing.xl,
-                  ),
-
-                  // ======================================================
-                  // TITLE
-                  // ======================================================
-
-                  Text(
-                    'Forgot password?',
-                    style:
-                    AppTextStyles.display2(context),
-                  ),
-
-                  const SizedBox(
-                    height: AppSpacing.xs,
-                  ),
-
-                  Text(
-                    'No worries. Enter your email and we\'ll send you a reset code.',
-                    style:
-                    AppTextStyles.bodyMedium(context),
-                  ),
-
-                  SizedBox(
-                    height: isCompact
-                        ? AppSpacing.lg
-                        : AppSpacing.xl,
-                  ),
-
-                  // ======================================================
-                  // ERROR
-                  // ======================================================
-
-                  if (_errorMessage != null) ...[
-                    StatusBanner(
-                      message: _errorMessage!,
-                      isError: true,
-                    ),
-
-                    const SizedBox(
-                      height: AppSpacing.md,
-                    ),
-                  ],
-
-                  // ======================================================
-                  // EMAIL FIELD
-                  // ======================================================
-
-                  AppTextField(
-                    label: 'Email Address',
-                    hint: 'you@example.com',
-                    controller: _emailController,
-
-                    keyboardType:
-                    TextInputType.emailAddress,
-
-                    textInputAction:
-                    TextInputAction.done,
-
-                    autofocus: true,
-
-                    prefixIcon: const Icon(
-                      Icons.mail_outline_rounded,
-                      size: 20,
-                      color: AppColors.gold,
-                    ),
-
-                    validator: (value) {
-                      if (value == null ||
-                          value.trim().isEmpty) {
-                        return 'Email is required.';
-                      }
-
-                      final emailReg = RegExp(
-                        r'^[\w\.\-]+@[\w\-]+\.[a-z]{2,}$',
-                        caseSensitive: false,
-                      );
-
-                      if (!emailReg.hasMatch(
-                        value.trim(),
-                      )) {
-                        return 'Please enter a valid email.';
-                      }
-
-                      return null;
-                    },
-
-                    onChanged: (_) {
-                      if (_errorMessage != null) {
-                        setState(() {
-                          _errorMessage = null;
-                        });
-                      }
-                    },
-                  ),
-
-                  const SizedBox(
-                    height: AppSpacing.xl,
-                  ),
-
-                  // ======================================================
-                  // SEND RESET CODE
-                  // ======================================================
-
-                  PrimaryButton(
-                    label: 'SEND RESET CODE',
-                    onPressed: _handleSubmit,
-                    isLoading: _isLoading,
-                  ),
-
-                  const SizedBox(
-                    height: AppSpacing.lg,
-                  ),
-
-                  // ======================================================
-                  // BACK TO SIGN IN
-                  // ======================================================
-
-                  Center(
-                    child: TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      child: Text(
-                        'Back to Sign In',
-                        style:
-                        AppTextStyles.link(context),
-                      ),
+                  Tab(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.phone_android_rounded, size: 16),
+                        SizedBox(width: 6),
+                        Text('Via Mobile'),
+                      ],
                     ),
                   ),
                 ],
@@ -325,155 +256,209 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           ),
         ),
       ),
-    );
-  }
-}
-
-// ============================================================================
-// KEY / EMAIL ILLUSTRATION
-// ============================================================================
-
-class _KeyPainter extends CustomPainter {
-  @override
-  void paint(
-      Canvas canvas,
-      Size size,
-      ) {
-    final gold = Paint()
-      ..color = AppColors.gold
-      ..style = PaintingStyle.fill;
-
-    final maroon = Paint()
-      ..color = AppColors.primaryDark
-      ..style = PaintingStyle.fill;
-
-    final stroke = Paint()
-      ..color = AppColors.gold
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-
-    final w = size.width;
-    final h = size.height;
-
-    // Envelope body
-    final envPath = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            0,
-            h * 0.25,
-            w,
-            h * 0.65,
-          ),
-          const Radius.circular(8),
+      body: SafeArea(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildEmailForm(),
+            _buildMobileForm(),
+          ],
         ),
-      );
-
-    canvas.drawPath(
-      envPath,
-      maroon,
-    );
-
-    canvas.drawPath(
-      envPath,
-      stroke..style = PaintingStyle.stroke,
-    );
-
-    // Envelope flap
-    final flapPath = Path()
-      ..moveTo(
-        0,
-        h * 0.25,
-      )
-      ..lineTo(
-        w / 2,
-        h * 0.52,
-      )
-      ..lineTo(
-        w,
-        h * 0.25,
-      );
-
-    canvas.drawPath(
-      flapPath,
-      stroke
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-
-    // Bottom lines
-    for (int i = 0; i < 3; i++) {
-      final y =
-          h * 0.62 +
-              i * h * 0.1;
-
-      final xEnd =
-      i == 2
-          ? w * 0.55
-          : w * 0.8;
-
-      canvas.drawLine(
-        Offset(
-          w * 0.15,
-          y,
-        ),
-        Offset(
-          xEnd,
-          y,
-        ),
-        stroke
-          ..color =
-          AppColors.gold.withOpacity(0.4)
-          ..strokeWidth = 1.5,
-      );
-    }
-
-    // Lock circle
-    canvas.drawCircle(
-      Offset(
-        w / 2,
-        h * 0.15,
       ),
-      w * 0.18,
-      gold,
-    );
-
-    canvas.drawCircle(
-      Offset(
-        w / 2,
-        h * 0.15,
-      ),
-      w * 0.18,
-      stroke
-        ..color = AppColors.primaryDark
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5,
-    );
-
-    // Lock body
-    final lockBody = Paint()
-      ..color = AppColors.primaryDark
-      ..style = PaintingStyle.fill;
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          w / 2 - w * 0.07,
-          h * 0.11,
-          w * 0.14,
-          h * 0.1,
-        ),
-        const Radius.circular(3),
-      ),
-      lockBody,
     );
   }
 
-  @override
-  bool shouldRepaint(
-      covariant CustomPainter oldDelegate,
-      ) {
-    return false;
+  // ─── Email Tab ───────────────────────────────────────────────────────────
+
+  Widget _buildEmailForm() {
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Form(
+        key: _emailFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: AppSpacing.xl),
+
+            // Icon
+            Center(
+              child: Container(
+                width: 64, height: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryDark,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.gold, width: 2),
+                ),
+                child: const Icon(
+                  Icons.mail_lock_outlined,
+                  color: AppColors.gold,
+                  size: 32,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+
+            Text(
+              'Reset via Email',
+              style: AppTextStyles.display2(context),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              "Enter the email address linked to your account. We'll send you a 6-digit code.",
+              style: AppTextStyles.bodyMedium(context),
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            if (_errorMessage != null && _tabController.index == 0) ...[
+              StatusBanner(message: _errorMessage!, isError: true),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            AppTextField(
+              label: 'Email Address',
+              hint: 'you@example.com',
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.done,
+              prefixIcon: const Icon(
+                Icons.mail_outline_rounded,
+                size: 20,
+                color: AppColors.gold,
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Email is required.';
+                final reg = RegExp(
+                  r'^[\w\.\-]+@[\w\-]+\.[a-z]{2,}$',
+                  caseSensitive: false,
+                );
+                if (!reg.hasMatch(v.trim())) {
+                  return 'Please enter a valid email address.';
+                }
+                return null;
+              },
+              onChanged: (_) {
+                if (_errorMessage != null) {
+                  setState(() => _errorMessage = null);
+                }
+              },
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            PrimaryButton(
+              label: 'SEND RESET CODE',
+              onPressed: _handleEmailSubmit,
+              isLoading: _isLoading,
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+
+            Center(
+              child: Text(
+                'Check your spam folder if you don\'t receive it.',
+                style: AppTextStyles.caption(context),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Mobile Tab ──────────────────────────────────────────────────────────
+
+  Widget _buildMobileForm() {
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Form(
+        key: _mobileFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: AppSpacing.xl),
+
+            // Icon
+            Center(
+              child: Container(
+                width: 64, height: 64,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryDark,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.gold, width: 2),
+                ),
+                child: const Icon(
+                  Icons.phone_locked_outlined,
+                  color: AppColors.gold,
+                  size: 32,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+
+            Text(
+              'Reset via Mobile',
+              style: AppTextStyles.display2(context),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              "Enter the mobile number linked to your account. We'll send a 6-digit SMS code.",
+              style: AppTextStyles.bodyMedium(context),
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            if (_errorMessage != null && _tabController.index == 1) ...[
+              StatusBanner(message: _errorMessage!, isError: true),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            AppTextField(
+              label: 'Mobile Number',
+              hint: '09XXXXXXXXX',
+              controller: _mobileCtrl,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              prefixIcon: const Icon(
+                Icons.phone_android_rounded,
+                size: 20,
+                color: AppColors.gold,
+              ),
+              extraFormatters: [FilteringTextInputFormatter.digitsOnly],
+              maxLength: 11,
+              validator: _validateMobile,
+              onChanged: (_) {
+                if (_errorMessage != null) {
+                  setState(() => _errorMessage = null);
+                }
+              },
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+
+            PrimaryButton(
+              label: 'SEND RESET CODE',
+              onPressed: _handleMobileSubmit,
+              isLoading: _isLoading,
+            ),
+
+            const SizedBox(height: AppSpacing.lg),
+
+            Center(
+              child: Text(
+                'Make sure your number has signal and can receive SMS.',
+                style: AppTextStyles.caption(context),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

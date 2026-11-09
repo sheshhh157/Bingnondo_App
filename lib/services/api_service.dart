@@ -26,20 +26,11 @@ class ApiException implements Exception {
   @override
   String toString() => message;
 
-  bool get isNetworkError =>
-      statusCode == null;
-
-  bool get isAuthError =>
-      statusCode == 401;
-
-  bool get isConflict =>
-      statusCode == 409;
-
-  bool get isValidationError =>
-      statusCode == 422;
-
-  bool get isNotFound =>
-      statusCode == 404;
+  bool get isNetworkError  => statusCode == null;
+  bool get isAuthError     => statusCode == 401;
+  bool get isConflict      => statusCode == 409;
+  bool get isValidationError => statusCode == 422;
+  bool get isNotFound      => statusCode == 404;
 }
 
 // ─── Auth Responses ─────────────────────────────────────────────────────────
@@ -57,22 +48,14 @@ class AuthResponse {
     this.message,
   });
 
-  factory AuthResponse.fromJson(
-      Map<String, dynamic> json,
-      ) {
+  factory AuthResponse.fromJson(Map<String, dynamic> json) {
     return AuthResponse(
-      accessToken:
-      json['accessToken'] as String?,
-      refreshToken:
-      json['refreshToken'] as String?,
+      accessToken:  json['accessToken']  as String?,
+      refreshToken: json['refreshToken'] as String?,
       user: json['user'] != null
-          ? CustomerUser.fromJson(
-        json['user']
-        as Map<String, dynamic>,
-      )
+          ? CustomerUser.fromJson(json['user'] as Map<String, dynamic>)
           : null,
-      message:
-      json['message'] as String?,
+      message: json['message'] as String?,
     );
   }
 }
@@ -81,8 +64,10 @@ class AuthResponse {
 
 class CustomerUser {
   final int id;
-  final String email;
+  final String? email;
+  final String? mobileNumber;
   final bool emailVerified;
+  final bool mobileVerified;
   final bool profileCompleted;
   final String status;
   final String? firstName;
@@ -90,33 +75,27 @@ class CustomerUser {
 
   CustomerUser({
     required this.id,
-    required this.email,
+    this.email,
+    this.mobileNumber,
     required this.emailVerified,
+    required this.mobileVerified,
     required this.profileCompleted,
     required this.status,
     this.firstName,
     this.lastName,
   });
 
-  factory CustomerUser.fromJson(
-      Map<String, dynamic> json,
-      ) {
+  factory CustomerUser.fromJson(Map<String, dynamic> json) {
     return CustomerUser(
-      id: json['id'] as int,
-      email: json['email'] as String,
-      emailVerified:
-      json['email_verified'] as bool? ??
-          false,
-      profileCompleted:
-      json['profile_completed'] as bool? ??
-          false,
-      status:
-      json['status'] as String? ??
-          'awaiting_verification',
-      firstName:
-      json['first_name'] as String?,
-      lastName:
-      json['last_name'] as String?,
+      id:               json['id'] as int,
+      email:            json['email'] as String?,
+      mobileNumber:     json['mobile_number'] as String?,
+      emailVerified:    json['email_verified']   as bool? ?? false,
+      mobileVerified:   json['mobile_verified']  as bool? ?? false,
+      profileCompleted: json['profile_completed'] as bool? ?? false,
+      status:           json['status'] as String? ?? 'awaiting_verification',
+      firstName:        json['first_name'] as String?,
+      lastName:         json['last_name']  as String?,
     );
   }
 }
@@ -125,27 +104,15 @@ class CustomerUser {
 
 class ApiService {
   ApiService._();
+  static final ApiService instance = ApiService._();
 
-  static final ApiService instance =
-  ApiService._();
-
-  final _storage =
-  const FlutterSecureStorage(
-    aOptions:
-    AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
-    iOptions:
-    IOSOptions(
-      accessibility:
-      KeychainAccessibility.first_unlock,
-    ),
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
 
   final _client = http.Client();
-
-  static const Duration _timeout =
-  Duration(seconds: 15);
+  static const Duration _timeout = Duration(seconds: 15);
 
   // ─── Token Management ────────────────────────────────────────────────────
 
@@ -153,21 +120,12 @@ class ApiService {
     required String accessToken,
     required String refreshToken,
   }) async {
-    await _storage.write(
-      key: 'access_token',
-      value: accessToken,
-    );
-
-    await _storage.write(
-      key: 'refresh_token',
-      value: refreshToken,
-    );
+    await _storage.write(key: 'access_token',  value: accessToken);
+    await _storage.write(key: 'refresh_token', value: refreshToken);
   }
 
   Future<String?> getAccessToken() async {
-    return _storage.read(
-      key: 'access_token',
-    );
+    return _storage.read(key: 'access_token');
   }
 
   Future<void> clearTokens() async {
@@ -183,126 +141,102 @@ class ApiService {
       }) async {
     final headers = <String, String>{
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      'Accept':       'application/json',
     };
 
     if (requiresAuth) {
-      final token =
-      await getAccessToken();
-
-      if (token != null) {
-        headers['Authorization'] =
-        'Bearer $token';
-      }
+      final token = await getAccessToken();
+      if (token != null) headers['Authorization'] = 'Bearer $token';
     }
 
     try {
       final response = await _client
           .post(
-        Uri.parse(
-          '$_baseUrl$path',
-        ),
-        headers: headers,
-        body: jsonEncode(body),
-      )
+            Uri.parse('$_baseUrl$path'),
+            headers: headers,
+            body: jsonEncode(body),
+          )
           .timeout(_timeout);
 
       return _handleResponse(response);
     } on SocketException {
-      throw const ApiException(
-        'No internet connection. Please check your network.',
-      );
+      throw const ApiException('No internet connection. Please check your network.');
     } on HttpException {
-      throw const ApiException(
-        'Network error. Please try again.',
-      );
+      throw const ApiException('Network error. Please try again.');
     } on TimeoutException {
-      throw const ApiException(
-        'Connection timed out. Please try again.',
-      );
+      throw const ApiException('Connection timed out. Please try again.');
     } on FormatException {
-      throw const ApiException(
-        'Invalid response from server. Please try again.',
-      );
+      throw const ApiException('Invalid response from server. Please try again.');
     }
   }
 
-  Map<String, dynamic> _handleResponse(
-      http.Response response,
-      ) {
+  Map<String, dynamic> _handleResponse(http.Response response) {
     Map<String, dynamic> body = {};
-
     try {
-      final decoded =
-      jsonDecode(response.body);
-
-      if (decoded is Map<String, dynamic>) {
-        body = decoded;
-      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) body = decoded;
     } catch (_) {
       body = {};
     }
 
-    if (response.statusCode >= 200 &&
-        response.statusCode < 300) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return body;
     }
 
     final message =
         body['message'] as String? ??
-            body['error'] as String? ??
-            'Something went wrong. Please try again.';
+        body['error']   as String? ??
+        'Something went wrong. Please try again.';
 
-    throw ApiException(
-      message,
-      statusCode: response.statusCode,
-    );
+    throw ApiException(message, statusCode: response.statusCode);
   }
 
   // ─── Auth Endpoints ──────────────────────────────────────────────────────
 
   /// POST /api/auth/customer/register
+  /// Email registration — sends OTP to email
   Future<AuthResponse> register({
     required String email,
     required String password,
   }) async {
     final data = await _post(
       '/api/auth/customer/register',
-      {
-        'email': email,
-        'password': password,
-      },
+      {'email': email, 'password': password},
     );
+    return AuthResponse.fromJson(data);
+  }
 
+  /// POST /api/auth/customer/register-mobile
+  /// Mobile registration — sends OTP via SMS
+  Future<AuthResponse> registerMobile({
+    required String mobileNumber,
+    required String password,
+  }) async {
+    final data = await _post(
+      '/api/auth/customer/register-mobile',
+      {'mobile_number': mobileNumber, 'password': password},
+    );
     return AuthResponse.fromJson(data);
   }
 
   /// POST /api/auth/customer/verify-otp
+  /// purpose: email_verification | mobile_verification | password_reset
   Future<AuthResponse> verifyOtp({
-    required String email,
+    required String contact,
     required String otp,
-    String purpose =
-    'email_verification',
+    String purpose = 'email_verification',
   }) async {
     final data = await _post(
       '/api/auth/customer/verify-otp',
-      {
-        'email': email,
-        'otp': otp,
-        'purpose': purpose,
-      },
+      {'contact': contact, 'otp': otp, 'purpose': purpose},
     );
 
-    final response =
-    AuthResponse.fromJson(data);
+    final response = AuthResponse.fromJson(data);
 
-    if (response.accessToken != null &&
-        response.refreshToken != null) {
+    if (response.accessToken != null && response.refreshToken != null) {
       await saveTokens(
-        accessToken:
-        response.accessToken!,
-        refreshToken:
-        response.refreshToken!,
+        accessToken:  response.accessToken!,
+        refreshToken: response.refreshToken!,
       );
     }
 
@@ -310,105 +244,76 @@ class ApiService {
   }
 
   /// POST /api/auth/customer/login
+  /// email field accepts email address OR mobile number
   Future<AuthResponse> login({
     required String emailOrMobile,
     required String password,
   }) async {
     final data = await _post(
       '/api/auth/customer/login',
-      {
-        'email': emailOrMobile,
-        'password': password,
-      },
+      {'email': emailOrMobile, 'password': password},
     );
 
-    final response =
-    AuthResponse.fromJson(data);
+    final response = AuthResponse.fromJson(data);
 
-    if (response.accessToken != null &&
-        response.refreshToken != null) {
+    if (response.accessToken != null && response.refreshToken != null) {
       await saveTokens(
-        accessToken:
-        response.accessToken!,
-        refreshToken:
-        response.refreshToken!,
+        accessToken:  response.accessToken!,
+        refreshToken: response.refreshToken!,
       );
     }
 
     return response;
   }
 
-  /// POST /api/auth/customer/verify-otp
-  /// purpose = password_reset
+  /// POST /api/auth/customer/verify-otp  (purpose = password_reset)
   Future<void> verifyPasswordResetOtp({
-    required String email,
+    required String contact,
     required String otp,
   }) async {
     await _post(
       '/api/auth/customer/verify-otp',
-      {
-        'email': email,
-        'otp': otp,
-        'purpose': 'password_reset',
-      },
+      {'contact': contact, 'otp': otp, 'purpose': 'password_reset'},
     );
   }
 
-  /// POST /api/auth/forgot-password
-  ///
-  /// The backend is responsible for checking
-  /// whether the account exists.
-  ///
-  /// Existing account:
-  ///     HTTP 200
-  ///
-  /// Non-existing account:
-  ///     HTTP 404
-  ///
-  /// A 404 becomes ApiException and is caught
-  /// by ForgotPasswordScreen.
-  Future<void> forgotPassword({
-    required String email,
-  }) async {
-    final normalizedEmail =
-    email.trim().toLowerCase();
-
+  /// POST /api/auth/forgot-password  (via email)
+  Future<void> forgotPassword({required String email}) async {
     await _post(
       '/api/auth/forgot-password',
-      {
-        'email': normalizedEmail,
-      },
+      {'email': email.trim().toLowerCase()},
+    );
+  }
+
+  /// POST /api/auth/forgot-password-mobile  (via SMS)
+  Future<void> forgotPasswordMobile({required String mobileNumber}) async {
+    await _post(
+      '/api/auth/forgot-password-mobile',
+      {'mobile_number': mobileNumber},
     );
   }
 
   /// POST /api/auth/reset-password
+  /// contact = email address OR mobile number
   Future<void> resetPassword({
-    required String email,
+    required String contact,
     required String otp,
     required String newPassword,
   }) async {
     await _post(
       '/api/auth/reset-password',
-      {
-        'email': email,
-        'otp': otp,
-        'new_password': newPassword,
-      },
+      {'contact': contact, 'otp': otp, 'new_password': newPassword},
     );
   }
 
   /// POST /api/auth/customer/resend-otp
   Future<void> resendOtp({
-    required String email,
-    String purpose =
-    'email_verification',
+    required String contact,
+    String purpose = 'email_verification',
   }) async {
     await _post(
       '/api/auth/customer/resend-otp',
-      {
-        'email': email,
-        'purpose': purpose,
-      },
+      {'contact': contact, 'purpose': purpose},
     );
   }
 }

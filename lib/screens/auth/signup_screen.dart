@@ -17,26 +17,46 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen>
-    with SingleTickerProviderStateMixin {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmController = TextEditingController();
-  final _emailFocus = FocusNode();
-  final _passwordFocus = FocusNode();
-  final _confirmFocus = FocusNode();
+    with TickerProviderStateMixin {
 
-  bool _isLoading = false;
+  // ─── Tab ────────────────────────────────────────────────────────────────
+  late final TabController _tabController;
+
+  // ─── Email form ──────────────────────────────────────────────────────────
+  final _emailFormKey       = GlobalKey<FormState>();
+  final _emailController    = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController  = TextEditingController();
+  final _emailFocus         = FocusNode();
+  final _passwordFocus      = FocusNode();
+  final _confirmFocus       = FocusNode();
+
+  // ─── Mobile form ─────────────────────────────────────────────────────────
+  final _mobileFormKey         = GlobalKey<FormState>();
+  final _mobileController      = TextEditingController();
+  final _mobilePassController  = TextEditingController();
+  final _mobileConfirmController = TextEditingController();
+  final _mobileFocus           = FocusNode();
+  final _mobilePassFocus       = FocusNode();
+  final _mobileConfirmFocus    = FocusNode();
+
+  bool _isLoading     = false;
   String? _errorMessage;
   bool _termsAccepted = false;
 
   late final AnimationController _animController;
-  late final Animation<double> _fadeAnim;
-  late final Animation<Offset> _slideAnim;
+  late final Animation<double>   _fadeAnim;
+  late final Animation<Offset>   _slideAnim;
 
   @override
   void initState() {
     super.initState();
+
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_errorMessage != null) setState(() => _errorMessage = null);
+    });
+
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -52,6 +72,7 @@ class _SignUpScreenState extends State<SignUpScreen>
 
   @override
   void dispose() {
+    _tabController.dispose();
     _animController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -59,11 +80,30 @@ class _SignUpScreenState extends State<SignUpScreen>
     _emailFocus.dispose();
     _passwordFocus.dispose();
     _confirmFocus.dispose();
+    _mobileController.dispose();
+    _mobilePassController.dispose();
+    _mobileConfirmController.dispose();
+    _mobileFocus.dispose();
+    _mobilePassFocus.dispose();
+    _mobileConfirmFocus.dispose();
     super.dispose();
   }
 
-  Future<void> _handleSignUp() async {
-    if (!_formKey.currentState!.validate()) return;
+  // ─── Validate PH mobile ──────────────────────────────────────────────────
+
+  String? _validateMobile(String? v) {
+    if (v == null || v.trim().isEmpty) return 'Mobile number is required.';
+    final digits = v.trim().replaceAll(RegExp(r'\D'), '');
+    if (!RegExp(r'^09\d{9}$').hasMatch(digits)) {
+      return 'Enter a valid PH number (09XXXXXXXXX).';
+    }
+    return null;
+  }
+
+  // ─── Submit: Email ───────────────────────────────────────────────────────
+
+  Future<void> _handleEmailSignUp() async {
+    if (!_emailFormKey.currentState!.validate()) return;
 
     if (!_termsAccepted) {
       setState(() => _errorMessage = 'Please agree to our Terms and Privacy Policy to continue.');
@@ -71,11 +111,7 @@ class _SignUpScreenState extends State<SignUpScreen>
     }
 
     FocusScope.of(context).unfocus();
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
       final email = _emailController.text.trim();
@@ -86,26 +122,25 @@ class _SignUpScreenState extends State<SignUpScreen>
 
       if (!mounted) return;
 
-      // Navigate to OTP screen
       Navigator.push(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, anim, __) => OtpScreen(email: email),
-          transitionsBuilder: (_, anim, __, child) {
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(1, 0),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
-              child: child,
-            );
-          },
+          pageBuilder: (_, anim, __) =>
+              OtpScreen(contact: email, isMobile: false),
+          transitionsBuilder: (_, anim, __, child) => SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1, 0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+            child: child,
+          ),
           transitionDuration: const Duration(milliseconds: 350),
         ),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = _mapError(e));
+      setState(() => _errorMessage =
+          e.isConflict ? 'This email is already registered. Sign in instead.' : e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _errorMessage = 'Something went wrong. Please try again.');
@@ -114,12 +149,58 @@ class _SignUpScreenState extends State<SignUpScreen>
     }
   }
 
-  String _mapError(ApiException e) {
-    if (e.isConflict) return 'This email is already registered. Sign in instead.';
-    return e.message;
+  // ─── Submit: Mobile ──────────────────────────────────────────────────────
+
+  Future<void> _handleMobileSignUp() async {
+    if (!_mobileFormKey.currentState!.validate()) return;
+
+    if (!_termsAccepted) {
+      setState(() => _errorMessage = 'Please agree to our Terms and Privacy Policy to continue.');
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() { _isLoading = true; _errorMessage = null; });
+
+    try {
+      final mobile = _mobileController.text.trim();
+      await context.read<AuthProvider>().registerMobile(
+        mobileNumber: mobile,
+        password: _mobilePassController.text,
+      );
+
+      if (!mounted) return;
+
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, anim, __) =>
+              OtpScreen(contact: mobile, isMobile: true),
+          transitionsBuilder: (_, anim, __, child) => SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1, 0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
+            child: child,
+          ),
+          transitionDuration: const Duration(milliseconds: 350),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.isConflict
+          ? 'This mobile number is already registered. Sign in instead.'
+          : e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Something went wrong. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  // ─── Password strength indicator ───────────────────────────────────────────
+  // ─── Password strength ───────────────────────────────────────────────────
+
   double _passwordStrength(String pw) {
     if (pw.isEmpty) return 0;
     double score = 0;
@@ -131,22 +212,12 @@ class _SignUpScreenState extends State<SignUpScreen>
     return score.clamp(0, 1);
   }
 
-  Color _strengthColor(double strength) {
-    if (strength < 0.35) return AppColors.error;
-    if (strength < 0.65) return AppColors.warning;
-    return AppColors.success;
-  }
-
-  String _strengthLabel(double strength) {
-    if (strength < 0.35) return 'Weak';
-    if (strength < 0.65) return 'Fair';
-    return 'Strong';
-  }
+  // ─── Build ───────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isWide = size.width >= 600;
+    final size      = MediaQuery.of(context).size;
+    final isWide    = size.width >= 600;
     final isCompact = size.height < 700;
 
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -170,24 +241,27 @@ class _SignUpScreenState extends State<SignUpScreen>
     );
   }
 
+  // ─── Wide layout (tablet) ────────────────────────────────────────────────
+
   Widget _buildWideLayout(BuildContext context, bool isCompact) {
     return Row(
       children: [
         Expanded(child: _buildBrandPanel(context)),
-        Expanded(child: _buildFormPanel(context, isCompact, isWide: true)),
-      ],
-    );
-  }
-
-  Widget _buildPortraitLayout(BuildContext context, bool isCompact) {
-    return CustomScrollView(
-      slivers: [
-        SliverFillRemaining(
-          hasScrollBody: false,
+        Expanded(
           child: Column(
             children: [
-              _buildPortraitHeader(context, isCompact),
-              Expanded(child: _buildFormPanel(context, isCompact)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  0,
+                ),
+                child: _buildTabBar(isDarkBackground: false),
+              ),
+              Expanded(
+                child: _buildFormPanel(context, isCompact, isWide: true),
+              ),
             ],
           ),
         ),
@@ -198,45 +272,52 @@ class _SignUpScreenState extends State<SignUpScreen>
   Widget _buildBrandPanel(BuildContext context) {
     return Container(
       color: AppColors.primaryDark,
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            BrandCatIcon(size: 80),
+            const SizedBox(width: AppSpacing.lg),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                BrandCatIcon(size: 80),
-                const SizedBox(width: AppSpacing.lg),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Join Bingnondo',
-                      style: GoogleFonts.playfairDisplaySc(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textOnDark,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'Create your account and\nstart ordering in minutes.',
-                      style: GoogleFonts.karla(
-                        fontSize: 14,
-                        color: AppColors.textOnDark.withOpacity(0.65),
-                        height: 1.6,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-                    _buildProgressDots(0),
-                  ],
+                Text(
+                  'Join Bingnondo',
+                  style: GoogleFonts.playfairDisplaySc(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textOnDark,
+                  ),
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Create your account and\nstart ordering in minutes.',
+                  style: GoogleFonts.karla(
+                    fontSize: 14,
+                    color: AppColors.textOnDark.withOpacity(0.65),
+                    height: 1.6,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                _buildProgressDots(0),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  // ─── Portrait layout (phone) ─────────────────────────────────────────────
+
+  Widget _buildPortraitLayout(BuildContext context, bool isCompact) {
+    return Column(
+      children: [
+        _buildPortraitHeader(context, isCompact),
+        Expanded(child: _buildFormPanel(context, isCompact)),
+      ],
     );
   }
 
@@ -247,11 +328,11 @@ class _SignUpScreenState extends State<SignUpScreen>
         AppSpacing.lg,
         isCompact ? AppSpacing.md : AppSpacing.xl,
         AppSpacing.lg,
-        isCompact ? AppSpacing.md : AppSpacing.lg,
+        0, // tabs sit at the bottom of this header — no extra bottom padding
       ),
       color: AppColors.primaryDark,
-      child: Stack(
-        clipBehavior: Clip.none,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.start,
@@ -271,18 +352,80 @@ class _SignUpScreenState extends State<SignUpScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xs + 2),
-                  // Progress indicator — step 1 of 2
                   _buildProgressDots(0),
                 ],
               ),
             ],
+          ),
+
+          // ── Email / Mobile tab bar ───────────────────────────────────────
+          const SizedBox(height: AppSpacing.md),
+          _buildTabBar(isDarkBackground: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabBar({bool isDarkBackground = true}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: isDarkBackground
+            ? Colors.black.withOpacity(0.2)
+            : AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: isDarkBackground
+              ? AppColors.gold.withOpacity(0.3)
+              : AppColors.border,
+        ),
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          color: AppColors.gold,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelColor: AppColors.primaryDark,
+        unselectedLabelColor: isDarkBackground
+            ? AppColors.textOnDark.withOpacity(0.7)
+            : AppColors.textSecondary,
+        labelStyle: GoogleFonts.karla(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+        ),
+        unselectedLabelStyle: GoogleFonts.karla(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        tabs: const [
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.mail_outline_rounded, size: 16),
+                SizedBox(width: 6),
+                Text('Email'),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.phone_android_rounded, size: 16),
+                SizedBox(width: 6),
+                Text('Mobile'),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  // Step dots: 0 = email/pw, 1 = OTP
   Widget _buildProgressDots(int step) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -304,154 +447,253 @@ class _SignUpScreenState extends State<SignUpScreen>
     );
   }
 
+  // ─── Form panel (TabBarView) ─────────────────────────────────────────────
+
   Widget _buildFormPanel(BuildContext context, bool isCompact, {bool isWide = false}) {
     return Container(
       color: AppColors.background,
-      child: SingleChildScrollView(
-        physics: const ClampingScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          isCompact ? AppSpacing.lg : (isWide ? AppSpacing.xxl : AppSpacing.xl),
-          AppSpacing.lg,
-          AppSpacing.xxl,
-        ),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (isWide) ...[
-                BrandCatIcon(size: 48),
-                const SizedBox(height: AppSpacing.md),
-              ],
+      child: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildEmailForm(context, isCompact, isWide: isWide),
+          _buildMobileForm(context, isCompact, isWide: isWide),
+        ],
+      ),
+    );
+  }
 
-              Text('New here?', style: AppTextStyles.display2(context)),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'Just your email and a password — you\'re in.',
-                style: AppTextStyles.bodyMedium(context),
-              ),
+  // ─── Email Form ──────────────────────────────────────────────────────────
 
-              SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.xl),
-
-              // Error banner
-              if (_errorMessage != null) ...[
-                StatusBanner(message: _errorMessage!, isError: true),
-                const SizedBox(height: AppSpacing.md),
-              ],
-
-              // Email
-              AppTextField(
-                label: 'Email Address',
-                hint: 'you@example.com',
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                focusNode: _emailFocus,
-                textInputAction: TextInputAction.next,
-                prefixIcon: const Icon(
-                  Icons.mail_outline_rounded,
-                  size: 20,
-                  color: AppColors.gold,
-                ),
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Email is required.';
-                  final emailReg = RegExp(r'^[\w\.\-]+@[\w\-]+\.[a-z]{2,}$', caseSensitive: false);
-                  if (!emailReg.hasMatch(v.trim())) return 'Please enter a valid email address.';
-                  return null;
-                },
-                onChanged: (_) {
-                  if (_errorMessage != null) setState(() => _errorMessage = null);
-                },
-              ),
-
+  Widget _buildEmailForm(BuildContext context, bool isCompact, {bool isWide = false}) {
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        isCompact ? AppSpacing.lg : (isWide ? AppSpacing.xxl : AppSpacing.xl),
+        AppSpacing.lg,
+        AppSpacing.xxl,
+      ),
+      child: Form(
+        key: _emailFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isWide) ...[
+              BrandCatIcon(size: 48),
               const SizedBox(height: AppSpacing.md),
-
-              // Password
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _passwordController,
-                builder: (_, val, __) {
-                  final strength = _passwordStrength(val.text);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AppTextField(
-                        label: 'Password',
-                        controller: _passwordController,
-                        isPassword: true,
-                        focusNode: _passwordFocus,
-                        textInputAction: TextInputAction.next,
-                        prefixIcon: const Icon(
-                          Icons.lock_outline_rounded,
-                          size: 20,
-                          color: AppColors.gold,
-                        ),
-                        validator: validatePassword,
-                        autovalidateMode: AutovalidateMode.disabled,
-                        onChanged: (_) {
-                          if (_errorMessage != null) setState(() => _errorMessage = null);
-                        },
-                      ),
-
-                      PasswordChecklist(password: val.text),
-                    ],
-                  );
-                },
-              ),
-
-              const SizedBox(height: AppSpacing.md),
-
-              // Confirm Password
-              AppTextField(
-                label: 'Confirm Password',
-                controller: _confirmController,
-                isPassword: true,
-                focusNode: _confirmFocus,
-                textInputAction: TextInputAction.done,
-                prefixIcon: const Icon(
-                  Icons.lock_outline_rounded,
-                  size: 20,
-                  color: AppColors.gold,
-                ),
-                validator: (v) {
-                  if (v == null || v.isEmpty) return 'Please confirm your password.';
-                  if (v != _passwordController.text) return 'Passwords do not match.';
-                  return null;
-                },
-              ),
-
-              SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-
-              // Terms checkbox
-              _buildTermsCheckbox(context),
-
-              SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-
-              // Sign up button
-              PrimaryButton(
-                label: 'CREATE ACCOUNT',
-                onPressed: _handleSignUp,
-                isLoading: _isLoading,
-              ),
-
-              SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-
-              // Info banner
-              _buildInfoNote(context),
-
-              SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-
-              const ChineseDivider(),
-
-              const SizedBox(height: AppSpacing.md),
-
-              // Login redirect
-              _buildLoginPrompt(context),
             ],
-          ),
+
+            Text('New here?', style: AppTextStyles.display2(context)),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Just your email and a password — you\'re in.',
+              style: AppTextStyles.bodyMedium(context),
+            ),
+
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.xl),
+
+            if (_errorMessage != null && _tabController.index == 0) ...[
+              StatusBanner(message: _errorMessage!, isError: true),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            AppTextField(
+              label: 'Email Address',
+              hint: 'you@example.com',
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              focusNode: _emailFocus,
+              textInputAction: TextInputAction.next,
+              prefixIcon: const Icon(Icons.mail_outline_rounded, size: 20, color: AppColors.gold),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Email is required.';
+                final reg = RegExp(r'^[\w\.\-]+@[\w\-]+\.[a-z]{2,}$', caseSensitive: false);
+                if (!reg.hasMatch(v.trim())) return 'Please enter a valid email address.';
+                return null;
+              },
+              onChanged: (_) {
+                if (_errorMessage != null) setState(() => _errorMessage = null);
+              },
+            ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _passwordController,
+              builder: (_, val, __) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppTextField(
+                    label: 'Password',
+                    controller: _passwordController,
+                    isPassword: true,
+                    focusNode: _passwordFocus,
+                    textInputAction: TextInputAction.next,
+                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
+                    validator: validatePassword,
+                    autovalidateMode: AutovalidateMode.disabled,
+                    onChanged: (_) {
+                      if (_errorMessage != null) setState(() => _errorMessage = null);
+                    },
+                  ),
+                  PasswordChecklist(password: val.text),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            AppTextField(
+              label: 'Confirm Password',
+              controller: _confirmController,
+              isPassword: true,
+              focusNode: _confirmFocus,
+              textInputAction: TextInputAction.done,
+              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Please confirm your password.';
+                if (v != _passwordController.text) return 'Passwords do not match.';
+                return null;
+              },
+            ),
+
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+            _buildTermsCheckbox(context),
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+
+            PrimaryButton(
+              label: 'CREATE ACCOUNT',
+              onPressed: _handleEmailSignUp,
+              isLoading: _isLoading,
+            ),
+
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+            _buildInfoNote(context, 'Just email and password to start. We\'ll ask for your name and address only when you\'re ready to place your first order.'),
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+            const ChineseDivider(),
+            const SizedBox(height: AppSpacing.md),
+            _buildLoginPrompt(context),
+          ],
         ),
       ),
     );
   }
+
+  // ─── Mobile Form ─────────────────────────────────────────────────────────
+
+  Widget _buildMobileForm(BuildContext context, bool isCompact, {bool isWide = false}) {
+    return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        isCompact ? AppSpacing.lg : (isWide ? AppSpacing.xxl : AppSpacing.xl),
+        AppSpacing.lg,
+        AppSpacing.xxl,
+      ),
+      child: Form(
+        key: _mobileFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isWide) ...[
+              BrandCatIcon(size: 48),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            Text('New here?', style: AppTextStyles.display2(context)),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Enter your PH mobile number to get started.',
+              style: AppTextStyles.bodyMedium(context),
+            ),
+
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.xl),
+
+            if (_errorMessage != null && _tabController.index == 1) ...[
+              StatusBanner(message: _errorMessage!, isError: true),
+              const SizedBox(height: AppSpacing.md),
+            ],
+
+            AppTextField(
+              label: 'Mobile Number',
+              hint: '09XXXXXXXXX',
+              controller: _mobileController,
+              keyboardType: TextInputType.phone,
+              focusNode: _mobileFocus,
+              textInputAction: TextInputAction.next,
+              prefixIcon: const Icon(Icons.phone_android_rounded, size: 20, color: AppColors.gold),
+              extraFormatters: [FilteringTextInputFormatter.digitsOnly],
+              maxLength: 11,
+              validator: _validateMobile,
+              onChanged: (_) {
+                if (_errorMessage != null) setState(() => _errorMessage = null);
+              },
+            ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _mobilePassController,
+              builder: (_, val, __) => Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppTextField(
+                    label: 'Password',
+                    controller: _mobilePassController,
+                    isPassword: true,
+                    focusNode: _mobilePassFocus,
+                    textInputAction: TextInputAction.next,
+                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
+                    validator: validatePassword,
+                    autovalidateMode: AutovalidateMode.disabled,
+                    onChanged: (_) {
+                      if (_errorMessage != null) setState(() => _errorMessage = null);
+                    },
+                  ),
+                  PasswordChecklist(password: val.text),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            AppTextField(
+              label: 'Confirm Password',
+              controller: _mobileConfirmController,
+              isPassword: true,
+              focusNode: _mobileConfirmFocus,
+              textInputAction: TextInputAction.done,
+              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Please confirm your password.';
+                if (v != _mobilePassController.text) return 'Passwords do not match.';
+                return null;
+              },
+            ),
+
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+            _buildTermsCheckbox(context),
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+
+            PrimaryButton(
+              label: 'CREATE ACCOUNT',
+              onPressed: _handleMobileSignUp,
+              isLoading: _isLoading,
+            ),
+
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+            _buildInfoNote(context, 'OTP will be sent to your mobile number via SMS. Standard SMS rates may apply.'),
+            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
+            const ChineseDivider(),
+            const SizedBox(height: AppSpacing.md),
+            _buildLoginPrompt(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Shared widgets ──────────────────────────────────────────────────────
 
   Widget _buildTermsCheckbox(BuildContext context) {
     return GestureDetector(
@@ -460,17 +702,14 @@ class _SignUpScreenState extends State<SignUpScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 24,
-            height: 24,
+            width: 24, height: 24,
             child: Checkbox(
               value: _termsAccepted,
               onChanged: (v) => setState(() => _termsAccepted = v ?? false),
               activeColor: AppColors.primary,
               checkColor: AppColors.textOnDark,
               side: const BorderSide(color: AppColors.gold, width: 1.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
               visualDensity: VisualDensity.compact,
             ),
           ),
@@ -480,32 +719,22 @@ class _SignUpScreenState extends State<SignUpScreen>
               padding: const EdgeInsets.only(top: 2),
               child: Text.rich(
                 TextSpan(
-                  style: GoogleFonts.karla(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
+                  style: GoogleFonts.karla(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
                   children: [
                     const TextSpan(text: 'I agree to Bingnondo\'s '),
                     TextSpan(
                       text: 'Terms of Service',
                       style: GoogleFonts.karla(
-                        fontSize: 13,
-                        color: AppColors.gold,
-                        fontWeight: FontWeight.w600,
-                        decoration: TextDecoration.underline,
-                        decorationColor: AppColors.gold,
+                        fontSize: 13, color: AppColors.gold, fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline, decorationColor: AppColors.gold,
                       ),
                     ),
                     const TextSpan(text: ' and '),
                     TextSpan(
                       text: 'Privacy Policy',
                       style: GoogleFonts.karla(
-                        fontSize: 13,
-                        color: AppColors.gold,
-                        fontWeight: FontWeight.w600,
-                        decoration: TextDecoration.underline,
-                        decorationColor: AppColors.gold,
+                        fontSize: 13, color: AppColors.gold, fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline, decorationColor: AppColors.gold,
                       ),
                     ),
                   ],
@@ -518,7 +747,7 @@ class _SignUpScreenState extends State<SignUpScreen>
     );
   }
 
-  Widget _buildInfoNote(BuildContext context) {
+  Widget _buildInfoNote(BuildContext context, String text) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -532,11 +761,9 @@ class _SignUpScreenState extends State<SignUpScreen>
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              'Just email and password to start. We\'ll ask for your name and address only when you\'re ready to place your first order.',
+              text,
               style: GoogleFonts.karla(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-                height: 1.5,
+                fontSize: 12, color: AppColors.textSecondary, height: 1.5,
               ),
             ),
           ),
@@ -549,49 +776,20 @@ class _SignUpScreenState extends State<SignUpScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(
-          'Already have an account? ',
-          style: AppTextStyles.bodyMedium(context),
-        ),
+        Text('Already have an account? ', style: AppTextStyles.bodyMedium(context)),
         GestureDetector(
-          onTap: () {
-            Navigator.pushReplacement(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (_, anim, __) => const LoginScreen(),
-                transitionsBuilder: (_, anim, __, child) {
-                  return FadeTransition(opacity: anim, child: child);
-                },
-                transitionDuration: const Duration(milliseconds: 300),
-              ),
-            );
-          },
+          onTap: () => Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, anim, __) => const LoginScreen(),
+              transitionsBuilder: (_, anim, __, child) =>
+                  FadeTransition(opacity: anim, child: child),
+              transitionDuration: const Duration(milliseconds: 300),
+            ),
+          ),
           child: Text('Sign in', style: AppTextStyles.link(context)),
         ),
       ],
     );
   }
-}
-
-// Small lantern painter for the info note icon
-class _LanternPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.gold
-      ..style = PaintingStyle.fill;
-
-    canvas.drawOval(Rect.fromLTWH(size.width * 0.1, size.height * 0.2, size.width * 0.8, size.height * 0.6), paint);
-
-    final linePaint = Paint()
-      ..color = AppColors.gold
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawLine(Offset(size.width / 2, 0), Offset(size.width / 2, size.height * 0.2), linePaint);
-    canvas.drawLine(Offset(size.width / 2, size.height * 0.8), Offset(size.width / 2, size.height), linePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
