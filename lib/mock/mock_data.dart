@@ -53,6 +53,8 @@ const Map<String, dynamic> kMockOrderResponse = {
   'id': 1001,
   'order_number': 'BNG-20260907-0042',
   'status': 'pending',
+  'subtotal':     281.00,
+  'delivery_fee':  49.00,
   'total_amount': 330.00,
   'payment_url': null,
 };

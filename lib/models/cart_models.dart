@@ -169,6 +169,8 @@ class PlaceOrderRequest {
   final String?        deliveryAddress;
   final double?        deliveryLatitude;
   final double?        deliveryLongitude;
+  // Delivery fee snapshot
+  final double?        deliveryFee;
 
   const PlaceOrderRequest({
     required this.items,
@@ -180,6 +182,7 @@ class PlaceOrderRequest {
     this.deliveryAddress,
     this.deliveryLatitude,
     this.deliveryLongitude,
+    this.deliveryFee,
   });
 
   Map<String, dynamic> toJson() => {
@@ -202,6 +205,8 @@ class PlaceOrderRequest {
       'delivery_latitude': deliveryLatitude,
     if (deliveryLongitude != null)
       'delivery_longitude': deliveryLongitude,
+    if (deliveryFee != null)
+      'delivery_fee': deliveryFee,
   };
 }
 
@@ -209,6 +214,8 @@ class PlaceOrderResponse {
   final int orderId;
   final String orderNumber;
   final String status;
+  final double subtotal;
+  final double deliveryFee;
   final double totalAmount;
   final String? paymentUrl;
 
@@ -216,16 +223,23 @@ class PlaceOrderResponse {
     required this.orderId,
     required this.orderNumber,
     required this.status,
+    required this.subtotal,
+    required this.deliveryFee,
     required this.totalAmount,
     this.paymentUrl,
   });
 
   factory PlaceOrderResponse.fromJson(Map<String, dynamic> json) {
+    final subtotal    = (json['subtotal']     as num?)?.toDouble() ?? (json['total_amount'] as num).toDouble();
+    final deliveryFee = (json['delivery_fee'] as num?)?.toDouble() ?? 0.0;
+    final total       = (json['total_amount'] as num).toDouble();
     return PlaceOrderResponse(
       orderId:     json['id'] as int,
       orderNumber: json['order_number'] as String,
       status:      json['status'] as String,
-      totalAmount: (json['total_amount'] as num).toDouble(),
+      subtotal:    subtotal,
+      deliveryFee: deliveryFee,
+      totalAmount: total,
       paymentUrl:  json['payment_url'] as String?,
     );
   }

@@ -980,18 +980,13 @@ class _CartSummaryCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           _SummaryRow(
             label: 'Delivery Fee',
-            value: 'Calculated at checkout',
-            valueStyle: GoogleFonts.karla(
-              fontSize: 13,
-              color: AppColors.textMuted,
-              fontStyle: FontStyle.italic,
-            ),
+            value: '₱${cart.deliveryFee.toStringAsFixed(2)}',
           ),
           const SizedBox(height: AppSpacing.md),
           const Divider(color: AppColors.border, thickness: 1),
           const SizedBox(height: AppSpacing.sm),
           _SummaryRow(
-            label: 'Subtotal',
+            label: 'Total',
             value: '₱${cart.totalAmount.toStringAsFixed(2)}',
             isBold: true,
           ),

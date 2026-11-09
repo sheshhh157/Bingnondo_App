@@ -30,6 +30,7 @@ import '../../models/cart_models.dart';
 import '../../models/geo_models.dart';
 import '../../services/address_history_service.dart';
 import '../../services/cart_provider.dart';
+import '../../services/cart_service.dart';
 import '../../services/business_hours_provider.dart';
 import '../../services/orders_provider.dart';
 import '../../services/gcash_receipt_service.dart';
@@ -1046,7 +1047,46 @@ class _GcashDetailStepState extends State<_GcashDetailStep> {
 }
 
 // ── GCash QR Code card ────────────────────────────────────────────────────────
-class _GcashQrCard extends StatelessWidget {
+// ── _GcashQrCard — fetches QR code from GET /api/payments/qr-code ─────────────
+class _GcashQrCard extends StatefulWidget {
+  @override
+  State<_GcashQrCard> createState() => _GcashQrCardState();
+}
+
+class _GcashQrCardState extends State<_GcashQrCard> {
+  bool    _loading   = true;
+  String? _imageUrl;
+  String  _name      = 'Bingnondo Cafe';
+  String  _number    = '';
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchQrCode();
+  }
+
+  Future<void> _fetchQrCode() async {
+    try {
+      final data = await CartService.instance.fetchActiveQrCode();
+      if (mounted) {
+        setState(() {
+          _imageUrl = data['image_url'] as String?;
+          _name     = (data['name']   as String?) ?? 'Bingnondo Cafe';
+          _number   = (data['number'] as String?) ?? '';
+          _loading  = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error   = e.toString();
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1068,7 +1108,7 @@ class _GcashQrCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Header
+          // ── Header ──────────────────────────────────────────────────────
           Row(children: [
             Container(
               padding:    const EdgeInsets.all(6),
@@ -1091,11 +1131,11 @@ class _GcashQrCard extends StatelessWidget {
 
           const SizedBox(height: AppSpacing.md),
 
-          // QR code placeholder — replace the Container below with
-          // Image.asset('assets/images/gcash_qr.png') once you have the real QR.
+          // ── QR image ─────────────────────────────────────────────────────
           Container(
-            width:  180,
-            height: 180,
+            width:   200,
+            height:  200,
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color:        Colors.white,
               borderRadius: BorderRadius.circular(AppRadius.md),
@@ -1108,25 +1148,15 @@ class _GcashQrCard extends StatelessWidget {
                     offset:     const Offset(0, 2)),
               ],
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.qr_code_2_rounded,
-                    size: 100, color: AppColors.primaryDark),
-                const SizedBox(height: 8),
-                Text('SCAN TO PAY',
-                    style: GoogleFonts.karla(
-                        fontSize:      10,
-                        fontWeight:    FontWeight.w800,
-                        color:         AppColors.textMuted,
-                        letterSpacing: 1.2)),
-              ],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: _buildQrImage(),
             ),
           ),
 
           const SizedBox(height: AppSpacing.md),
 
-          // GCash number / name
+          // ── Account name + number ────────────────────────────────────────
           Container(
             width:   double.infinity,
             padding: const EdgeInsets.symmetric(
@@ -1138,29 +1168,84 @@ class _GcashQrCard extends StatelessWidget {
                   color: const Color(0xFF1E88E5).withOpacity(0.2)),
             ),
             child: Column(children: [
-              Text('Bingnondo Cafe',
+              Text(_name,
                   style: GoogleFonts.karla(
                       fontSize:   15,
                       fontWeight: FontWeight.w800,
                       color:      AppColors.textPrimary)),
-              const SizedBox(height: 2),
-              Text('09XX XXX XXXX',
-                  style: GoogleFonts.karla(
-                      fontSize:   13,
-                      color:      AppColors.textSecondary)),
+              if (_number.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(_number,
+                    style: GoogleFonts.karla(
+                        fontSize: 13,
+                        color:    AppColors.textSecondary)),
+              ],
             ]),
           ),
 
           const SizedBox(height: AppSpacing.sm),
 
           Text(
-            'Send the exact amount shown in your order total below.',
+            'Send the exact amount shown in your order total below.\nDelivery fee is already included.',
             textAlign: TextAlign.center,
             style: GoogleFonts.karla(
                 fontSize: 11,
                 color:    AppColors.textMuted,
                 height:   1.4),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQrImage() {
+    // Loading spinner
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    // Error or no QR configured — show icon fallback
+    if (_error != null || _imageUrl == null || _imageUrl!.isEmpty) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.qr_code_2_rounded,
+              size: 110, color: AppColors.primaryDark),
+          const SizedBox(height: 6),
+          Text('SCAN TO PAY',
+              style: GoogleFonts.karla(
+                  fontSize:      10,
+                  fontWeight:    FontWeight.w800,
+                  color:         AppColors.textMuted,
+                  letterSpacing: 1.2)),
+        ],
+      );
+    }
+
+    // Live QR image from Cloudinary
+    return Image.network(
+      _imageUrl!,
+      fit: BoxFit.contain,
+      loadingBuilder: (_, child, progress) {
+        if (progress == null) return child;
+        return const Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      },
+      errorBuilder: (_, __, ___) => Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.qr_code_2_rounded,
+              size: 110, color: AppColors.primaryDark),
+          const SizedBox(height: 6),
+          Text('SCAN TO PAY',
+              style: GoogleFonts.karla(
+                  fontSize:      10,
+                  fontWeight:    FontWeight.w800,
+                  color:         AppColors.textMuted,
+                  letterSpacing: 1.2)),
         ],
       ),
     );
@@ -1296,7 +1381,48 @@ class _CodDetailStep extends StatelessWidget {
                     const Divider(color: AppColors.border, height: 1),
                     const SizedBox(height: AppSpacing.md),
 
-                    // Total
+                    // ── Subtotal row ──────────────────────────────────────
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Subtotal',
+                            style: GoogleFonts.karla(
+                                fontSize: 13,
+                                color:    AppColors.textSecondary)),
+                        Text('₱${cart.subtotal.toStringAsFixed(2)}',
+                            style: GoogleFonts.karla(
+                                fontSize:   13,
+                                fontWeight: FontWeight.w600,
+                                color:      AppColors.textPrimary)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+
+                    // ── Delivery fee row ──────────────────────────────────
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(children: [
+                          const Icon(Icons.delivery_dining_rounded,
+                              size: 14, color: AppColors.textMuted),
+                          const SizedBox(width: 4),
+                          Text('Delivery Fee',
+                              style: GoogleFonts.karla(
+                                  fontSize: 13,
+                                  color:    AppColors.textSecondary)),
+                        ]),
+                        Text('₱${cart.deliveryFee.toStringAsFixed(2)}',
+                            style: GoogleFonts.karla(
+                                fontSize:   13,
+                                fontWeight: FontWeight.w600,
+                                color:      AppColors.textPrimary)),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.border, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+
+                    // ── Grand Total ───────────────────────────────────────
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -1835,6 +1961,18 @@ class _ConfirmationStep extends StatelessWidget {
                 ),
               ],
 
+              const SizedBox(height: AppSpacing.sm),
+              _ConfirmRow(
+                label: 'Subtotal',
+                value: '₱${order.subtotal.toStringAsFixed(2)}',
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              _ConfirmRow(
+                label: '🛵  Delivery Fee',
+                value: order.deliveryFee > 0
+                    ? '₱${order.deliveryFee.toStringAsFixed(2)}'
+                    : 'Free',
+              ),
               const SizedBox(height: AppSpacing.md),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -2012,6 +2150,38 @@ class _CheckoutBottomBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const BusinessHoursBanner(compact: true),
+          // ── Subtotal + Delivery Fee ─────────────────────────────────
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Subtotal',
+                  style: GoogleFonts.karla(
+                      fontSize: 12, color: AppColors.textMuted)),
+              Text('₱${cart.subtotal.toStringAsFixed(2)}',
+                  style: GoogleFonts.karla(
+                      fontSize: 12, color: AppColors.textSecondary)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                const Icon(Icons.delivery_dining_rounded,
+                    size: 12, color: AppColors.textMuted),
+                const SizedBox(width: 3),
+                Text('Delivery Fee',
+                    style: GoogleFonts.karla(
+                        fontSize: 12, color: AppColors.textMuted)),
+              ]),
+              Text('₱${cart.deliveryFee.toStringAsFixed(2)}',
+                  style: GoogleFonts.karla(
+                      fontSize: 12, color: AppColors.textSecondary)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Divider(color: AppColors.border, height: 1),
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -2326,6 +2496,40 @@ class _OrderSummaryCardState extends State<_OrderSummaryCard> {
             ]),
           )),
 
+          const Divider(color: AppColors.border),
+
+          // ── Subtotal ──────────────────────────────────────────────────────
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Subtotal',
+                  style: GoogleFonts.karla(
+                      fontSize: 12, color: AppColors.textSecondary)),
+              Text('₱${widget.cart.subtotal.toStringAsFixed(2)}',
+                  style: GoogleFonts.karla(
+                      fontSize: 12, color: AppColors.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 4),
+
+          // ── Delivery Fee ──────────────────────────────────────────────────
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                const Icon(Icons.delivery_dining_rounded,
+                    size: 12, color: AppColors.textMuted),
+                const SizedBox(width: 3),
+                Text('Delivery Fee',
+                    style: GoogleFonts.karla(
+                        fontSize: 12, color: AppColors.textSecondary)),
+              ]),
+              Text('₱${widget.cart.deliveryFee.toStringAsFixed(2)}',
+                  style: GoogleFonts.karla(
+                      fontSize: 12, color: AppColors.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 6),
           const Divider(color: AppColors.border),
 
           // ── Total ────────────────────────────────────────────────────────

@@ -21,7 +21,12 @@ class CartProvider extends ChangeNotifier {
   bool get isEmpty              => _items.isEmpty;
   int get totalItemCount        => _items.fold(0, (sum, i) => sum + i.quantity);
   double get subtotal           => _items.fold(0, (sum, i) => sum + i.subtotal);
-  double get totalAmount        => subtotal;
+
+  // ── Delivery fee — fetched from GET /api/payments/delivery-fee ───────────
+  double _deliveryFee     = 0.0;
+  bool   _deliveryFeeEnabled = false;
+  double get deliveryFee  => _deliveryFeeEnabled ? _deliveryFee : 0.0;
+  double get totalAmount  => subtotal + deliveryFee;
 
   // ─── Checkout state ────────────────────────────────────────────────────────
   CheckoutStep        _step          = CheckoutStep.cart;
@@ -157,12 +162,14 @@ class CartProvider extends ChangeNotifier {
 
   void clearCart() {
     _items.clear();
-    _orderNotes         = null;
-    _step               = CheckoutStep.cart;
-    _lastOrder          = null;
-    _gcashExtractResult = null;
-    _deliveryAddress      = null;
-    _saveAddressToProfile = false;
+    _orderNotes            = null;
+    _step                  = CheckoutStep.cart;
+    _lastOrder             = null;
+    _gcashExtractResult    = null;
+    _deliveryAddress       = null;
+    _saveAddressToProfile  = false;
+    _deliveryFee           = 0.0;
+    _deliveryFeeEnabled    = false;
     _clearError();
     notifyListeners();
   }
@@ -278,6 +285,15 @@ class CartProvider extends ChangeNotifier {
         _paymentMethod = PaymentMethod.gcash;
       }
 
+      // ── Fetch delivery fee from backend ────────────────────────────────
+      try {
+        final feeData = await CartService.instance.fetchDeliveryFee();
+        _deliveryFee        = feeData['amount'] as double? ?? 0.0;
+        _deliveryFeeEnabled = feeData['enabled'] as bool?  ?? false;
+      } catch (_) {
+        // Non-fatal — delivery fee stays at 0 if endpoint fails
+      }
+
       // Seed the delivery pin from the saved profile address (unless the
       // customer already chose one at checkout).
       if (_deliveryAddress == null &&
@@ -320,6 +336,7 @@ class CartProvider extends ChangeNotifier {
         deliveryAddress:     _deliveryAddress?.address,
         deliveryLatitude:    _deliveryAddress?.latitude,
         deliveryLongitude:   _deliveryAddress?.longitude,
+        deliveryFee:         deliveryFee,
       );
 
       // Persist the new pin as the default address, if the customer asked for it.

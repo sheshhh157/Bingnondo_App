@@ -74,6 +74,42 @@ class CartService {
     throw CartApiException(message, statusCode: response.statusCode, code: code);
   }
 
+  // ─── GET /api/payments/qr-code ────────────────────────────────────────────
+  // Returns { id, name, number, image_url }
+  Future<Map<String, dynamic>> fetchActiveQrCode() async {
+    try {
+      final headers  = await _authHeaders();
+      final response = await _client
+          .get(Uri.parse('$_baseUrl/api/payments/qr-code'), headers: headers)
+          .timeout(_timeout);
+      return _handleResponse(response);
+    } on SocketException {
+      throw const CartApiException('No internet connection.');
+    } on CartApiException {
+      rethrow;
+    } catch (_) {
+      throw const CartApiException('Could not fetch QR code.');
+    }
+  }
+
+  // ─── GET /api/payments/delivery-fee ───────────────────────────────────────
+  // Returns { amount: double, enabled: bool }
+  Future<Map<String, dynamic>> fetchDeliveryFee() async {
+    try {
+      final headers  = await _authHeaders();
+      final response = await _client
+          .get(Uri.parse('$_baseUrl/api/payments/delivery-fee'), headers: headers)
+          .timeout(_timeout);
+      return _handleResponse(response);
+    } on SocketException {
+      throw const CartApiException('No internet connection.');
+    } on CartApiException {
+      rethrow;
+    } catch (_) {
+      throw const CartApiException('Could not fetch delivery fee.');
+    }
+  }
+
   // ─── GET /api/customer/profile ─────────────────────────────────────────────
   // Returns profile + restriction_level.
   // Called by CartProvider.checkProfileGate() before checkout.
