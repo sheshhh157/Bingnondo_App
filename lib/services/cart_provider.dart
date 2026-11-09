@@ -25,8 +25,31 @@ class CartProvider extends ChangeNotifier {
   // ── Delivery fee — fetched from GET /api/payments/delivery-fee ───────────
   double _deliveryFee     = 0.0;
   bool   _deliveryFeeEnabled = false;
+  bool   _loadingDeliveryFee = false;
   double get deliveryFee  => _deliveryFeeEnabled ? _deliveryFee : 0.0;
   double get totalAmount  => subtotal + deliveryFee;
+
+  /// Fetches the admin-configured delivery fee. Safe to call repeatedly;
+  /// failures are non-fatal and keep the last known value.
+  Future<void> loadDeliveryFee() async {
+    if (_loadingDeliveryFee) return;
+    _loadingDeliveryFee = true;
+    try {
+      if (kUseMock) {
+        _deliveryFee        = 49.0;
+        _deliveryFeeEnabled = true;
+      } else {
+        final feeData = await CartService.instance.fetchDeliveryFee();
+        _deliveryFee        = (feeData['amount'] as num?)?.toDouble() ?? 0.0;
+        _deliveryFeeEnabled = feeData['enabled'] as bool? ?? false;
+      }
+      notifyListeners();
+    } catch (_) {
+      // Non-fatal — keep whatever fee we already had.
+    } finally {
+      _loadingDeliveryFee = false;
+    }
+  }
 
   // ─── Checkout state ────────────────────────────────────────────────────────
   CheckoutStep        _step          = CheckoutStep.cart;
@@ -168,8 +191,6 @@ class CartProvider extends ChangeNotifier {
     _gcashExtractResult    = null;
     _deliveryAddress       = null;
     _saveAddressToProfile  = false;
-    _deliveryFee           = 0.0;
-    _deliveryFeeEnabled    = false;
     _clearError();
     notifyListeners();
   }
@@ -286,13 +307,7 @@ class CartProvider extends ChangeNotifier {
       }
 
       // ── Fetch delivery fee from backend ────────────────────────────────
-      try {
-        final feeData = await CartService.instance.fetchDeliveryFee();
-        _deliveryFee        = feeData['amount'] as double? ?? 0.0;
-        _deliveryFeeEnabled = feeData['enabled'] as bool?  ?? false;
-      } catch (_) {
-        // Non-fatal — delivery fee stays at 0 if endpoint fails
-      }
+      await loadDeliveryFee();
 
       // Seed the delivery pin from the saved profile address (unless the
       // customer already chose one at checkout).

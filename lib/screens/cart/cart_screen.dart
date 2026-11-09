@@ -33,6 +33,12 @@ class _CartScreenState extends State<CartScreen>
     _fadeAnim =
         CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
+
+    // Delivery fee is public config — fetch it as soon as the cart exists so
+    // the summary doesn't show ₱0.00 while the customer is still shopping.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<CartProvider>().loadDeliveryFee();
+    });
   }
 
   @override

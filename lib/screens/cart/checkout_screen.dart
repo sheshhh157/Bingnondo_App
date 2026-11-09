@@ -23,7 +23,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gal/gal.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../models/cart_models.dart';
@@ -1055,6 +1057,7 @@ class _GcashQrCard extends StatefulWidget {
 
 class _GcashQrCardState extends State<_GcashQrCard> {
   bool    _loading   = true;
+  bool    _saving    = false;
   String? _imageUrl;
   String  _name      = 'Bingnondo Cafe';
   String  _number    = '';
@@ -1086,6 +1089,87 @@ class _GcashQrCardState extends State<_GcashQrCard> {
       }
     }
   }
+
+  void _showMessage(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ));
+  }
+
+  /// Copies the GCash account number to the clipboard.
+  Future<void> _copyNumber() async {
+    if (_number.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: _number));
+    if (mounted) _showMessage('GCash number copied: $_number');
+  }
+
+  /// Downloads the admin-uploaded QR image and saves it to the phone gallery.
+  Future<void> _saveQr() async {
+    final url = _imageUrl;
+    if (url == null || url.isEmpty || _saving) return;
+
+    setState(() => _saving = true);
+    File? tempFile;
+    try {
+      final hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess();
+        if (!granted) {
+          if (mounted) {
+            _showMessage('Please allow photo access to save the QR code.');
+          }
+          return;
+        }
+      }
+
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        throw Exception('QR image download failed (${response.statusCode}).');
+      }
+
+      // Write to a temp .jpg file first. Saving from a path lets the plugin
+      // use the file extension instead of guessing the format from bytes,
+      // which is what makes putImageBytes fail on some devices.
+      tempFile = File(
+        '${Directory.systemTemp.path}/bingnondo_gcash_qr_'
+        '${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await tempFile.writeAsBytes(response.bodyBytes, flush: true);
+
+      await Gal.putImage(tempFile.path);
+      if (mounted) _showMessage('QR code saved to your gallery.');
+    } on GalException catch (e) {
+      debugPrint('[SaveQR] GalException (${e.type.code}): ${e.type.message}');
+      if (mounted) _showMessage('Could not save QR code: ${e.type.message}');
+    } catch (e, stack) {
+      debugPrint('[SaveQR] Failed: $e\n$stack');
+      if (mounted) {
+        _showMessage('Could not save QR code: $e');
+      }
+    } finally {
+      if (tempFile != null) {
+        try {
+          if (await tempFile.exists()) await tempFile.delete();
+        } catch (_) {}
+      }
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  ButtonStyle get _actionStyle => OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF1E88E5),
+        side: BorderSide(color: const Color(0xFF1E88E5).withOpacity(0.45)),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md)),
+        textStyle: GoogleFonts.karla(
+            fontSize: 12, fontWeight: FontWeight.w700),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1175,13 +1259,61 @@ class _GcashQrCardState extends State<_GcashQrCard> {
                       color:      AppColors.textPrimary)),
               if (_number.isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(_number,
-                    style: GoogleFonts.karla(
-                        fontSize: 13,
-                        color:    AppColors.textSecondary)),
+                InkWell(
+                  onTap: _copyNumber,
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_number,
+                            style: GoogleFonts.karla(
+                                fontSize: 13,
+                                color:    AppColors.textSecondary)),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.copy_rounded,
+                            size: 14, color: Color(0xFF1E88E5)),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ]),
           ),
+
+          const SizedBox(height: AppSpacing.sm),
+
+          // ── Save QR / copy number actions ────────────────────────────────
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: (_imageUrl != null &&
+                        _imageUrl!.isNotEmpty &&
+                        !_saving)
+                    ? _saveQr
+                    : null,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.download_rounded, size: 16),
+                label: Text(_saving ? 'Saving...' : 'Save QR'),
+                style: _actionStyle,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _number.isEmpty ? null : _copyNumber,
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('Copy Number'),
+                style: _actionStyle,
+              ),
+            ),
+          ]),
 
           const SizedBox(height: AppSpacing.sm),
 

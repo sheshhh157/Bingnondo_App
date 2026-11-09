@@ -146,7 +146,10 @@ class _MainShellState extends State<MainShell>
                   Expanded(
                     child: Consumer<CartProvider>(
                       builder: (_, cart, __) => GestureDetector(
-                        onTap: () => setState(() => _currentIndex = 1),
+                        onTap: () {
+                          setState(() => _currentIndex = 1);
+                          context.read<CartProvider>().loadDeliveryFee();
+                        },
                         behavior: HitTestBehavior.opaque,
                         child: SizedBox(
                           width: double.infinity,

@@ -61,6 +61,7 @@ dependencies:
   flutter_map: ^8.1.1        # OpenStreetMap tiles — Leaflet-equivalent for Flutter
   latlong2: ^0.9.1           # LatLng type used by flutter_map
   geolocator: ^13.0.2        # "Use my current location"
+  gal: ^2.3.3
 
 dev_dependencies:
   flutter_test:
