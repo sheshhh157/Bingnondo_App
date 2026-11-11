@@ -160,7 +160,7 @@ class AppNotification {
 
 class AccountProfile {
   final int id;
-  final String email;
+  final String? email;
   final String? firstName;
   final String? lastName;
   final String? mobileNumber;
@@ -192,7 +192,7 @@ class AccountProfile {
     final lng = json['longitude'];
     return AccountProfile(
       id: json['id'] as int,
-      email: json['email'] as String,
+      email: json['email'] as String?,
       firstName: json['first_name'] as String?,
       lastName: json['last_name'] as String?,
       mobileNumber: json['mobile_number'] as String?,
@@ -207,17 +207,29 @@ class AccountProfile {
   }
 
   String get displayName {
-    if (firstName != null && lastName != null) return '$firstName $lastName';
-    if (firstName != null) return firstName!;
-    return email;
+    final first = firstName?.trim();
+    final last = lastName?.trim();
+    if (first != null && first.isNotEmpty && last != null && last.isNotEmpty) {
+      return '$first $last';
+    }
+    if (first != null && first.isNotEmpty) return first;
+    final contactEmail = email?.trim();
+    if (contactEmail != null && contactEmail.isNotEmpty) return contactEmail;
+    return mobileNumber ?? 'Complete your profile';
   }
 
   String get initials {
-    if (firstName != null && lastName != null) {
-      return '${firstName![0]}${lastName![0]}'.toUpperCase();
+    final first = firstName?.trim();
+    final last = lastName?.trim();
+    if (first != null && first.isNotEmpty && last != null && last.isNotEmpty) {
+      return '${first[0]}${last[0]}'.toUpperCase();
     }
-    if (firstName != null) return firstName![0].toUpperCase();
-    return email[0].toUpperCase();
+    if (first != null && first.isNotEmpty) return first[0].toUpperCase();
+    final contactEmail = email?.trim();
+    if (contactEmail != null && contactEmail.isNotEmpty) {
+      return contactEmail[0].toUpperCase();
+    }
+    return 'M';
   }
 }
 

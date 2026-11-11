@@ -51,6 +51,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
+        top: false,
         child: FadeTransition(
           opacity: _fade,
           child: Consumer<AccountSettingsProvider>(
@@ -71,9 +72,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
   // ─── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context, AccountSettingsProvider provider) {
     return Container(
+      width: double.infinity,
       color: AppColors.primaryDark,
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+      padding: EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          MediaQuery.of(context).padding.top + AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.md),
       child: Row(
         children: [
           Expanded(
@@ -235,7 +240,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
           _SettingsTile(
             icon: _EmailIconPainter(),
             label: 'Email Address',
-            subtitle: provider.profile!.email,
+            subtitle: provider.profile!.email ??
+                'No email linked (mobile account)',
             onTap: null, // not editable
           ),
 
@@ -305,7 +311,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(profile.email,
+                Text(profile.email ?? profile.mobileNumber ?? 'No contact info',
                     style: AppTextStyles.bodySmall(context)),
                 const SizedBox(height: 4),
                 // Profile completeness badge

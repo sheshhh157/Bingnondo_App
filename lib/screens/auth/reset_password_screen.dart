@@ -9,7 +9,7 @@ import '../../widgets/app_widgets.dart';
 import 'login_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  /// Email address OR mobile number (09XXXXXXXXX)
+  /// Email address used for the password-reset OTP.
   final String contact;
   final String otp;
 
@@ -54,12 +54,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     setState(() { _isLoading = true; _errorMessage = null; });
 
     try {
-      // Set the pending contact in provider so resetPassword() knows where to send
-      context.read<AuthProvider>().setPendingContact(
-        widget.contact,
-        isMobile: _isMobile,
-      );
-
       await context.read<AuthProvider>().resetPassword(
         otp: widget.otp,
         newPassword: _passwordController.text,
@@ -77,8 +71,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  bool get _isMobile => RegExp(r'^09\d{9}$').hasMatch(widget.contact.trim());
 
   // ─── Build ───────────────────────────────────────────────────────────────
 

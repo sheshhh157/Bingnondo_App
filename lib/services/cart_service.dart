@@ -5,6 +5,7 @@
  *   GET  /api/customer/profile       → fetchProfile()
  *   PUT  /api/customer/profile       → updateProfile()
  *   POST /api/orders                 → placeOrder()
+ *   GET  /api/orders/checkout-config → fetchCheckoutConfig()  ← BAGO
  *
  * Flip kUseMock = false in mock_data.dart to connect to the real backend.
  *
@@ -20,7 +21,7 @@ import '../models/cart_models.dart';
 
 const String _baseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:3000',
+  defaultValue: 'https://bingnondobackend-production.up.railway.app',
 );
 
 // ─── Exception ────────────────────────────────────────────────────────────────
@@ -39,6 +40,39 @@ class CartApiException implements Exception {
   bool get isSuspended         => code == 'suspended'          || (statusCode == 403 && message.contains('suspend'));
   bool get isCodRestricted     => code == 'cod_restricted';
   bool get isItemsUnavailable  => code == 'items_unavailable';
+  bool get isNoRidersAvailable => code == 'no_riders_available';   // ← BAGO
+}
+
+// ─── CheckoutConfig ───────────────────────────────────────────────────────────
+// Result of GET /api/orders/checkout-config
+
+class CheckoutConfig {
+  final bool ridersAvailable;
+  final double deliveryFeeAmount;
+  final bool deliveryFeeEnabled;
+
+  const CheckoutConfig({
+    required this.ridersAvailable,
+    required this.deliveryFeeAmount,
+    required this.deliveryFeeEnabled,
+  });
+
+  factory CheckoutConfig.fromJson(Map<String, dynamic> json) {
+    final fee = json['delivery_fee'] as Map<String, dynamic>? ?? {};
+    return CheckoutConfig(
+      ridersAvailable:    json['riders_available'] as bool? ?? true,
+      deliveryFeeAmount:  (fee['amount'] as num?)?.toDouble() ?? 0.0,
+      deliveryFeeEnabled: fee['enabled'] as bool? ?? false,
+    );
+  }
+
+  /// Fallback when the network call fails — treat riders as available so
+  /// we don't accidentally block delivery.
+  factory CheckoutConfig.fallback() => const CheckoutConfig(
+    ridersAvailable:    true,
+    deliveryFeeAmount:  0.0,
+    deliveryFeeEnabled: false,
+  );
 }
 
 // ─── CartService ─────────────────────────────────────────────────────────────
@@ -74,6 +108,28 @@ class CartService {
     throw CartApiException(message, statusCode: response.statusCode, code: code);
   }
 
+  // ─── GET /api/orders/checkout-config ──────────────────────────────────────
+  // Returns delivery fee + payment QR codes + riders_available flag.
+  // This replaces the old separate fetchDeliveryFee() call.
+  Future<CheckoutConfig> fetchCheckoutConfig() async {
+    try {
+      final headers  = await _authHeaders();
+      final response = await _client
+          .get(Uri.parse('$_baseUrl/api/orders/checkout-config'), headers: headers)
+          .timeout(_timeout);
+      final data = _handleResponse(response);
+      return CheckoutConfig.fromJson(data);
+    } on SocketException {
+      throw const CartApiException('No internet connection.');
+    } on CartApiException {
+      rethrow;
+    } catch (_) {
+      // Non-fatal fallback — treat riders as available so checkout is not
+      // blocked when this call fails for a transient reason.
+      return CheckoutConfig.fallback();
+    }
+  }
+
   // ─── GET /api/payments/qr-code ────────────────────────────────────────────
   // Returns { id, name, number, image_url }
   Future<Map<String, dynamic>> fetchActiveQrCode() async {
@@ -93,7 +149,7 @@ class CartService {
   }
 
   // ─── GET /api/payments/delivery-fee ───────────────────────────────────────
-  // Returns { amount: double, enabled: bool }
+  // Kept for backward-compat with any other callers; prefer fetchCheckoutConfig().
   Future<Map<String, dynamic>> fetchDeliveryFee() async {
     try {
       final headers  = await _authHeaders();
@@ -111,8 +167,6 @@ class CartService {
   }
 
   // ─── GET /api/customer/profile ─────────────────────────────────────────────
-  // Returns profile + restriction_level.
-  // Called by CartProvider.checkProfileGate() before checkout.
   Future<CustomerProfile> fetchProfile() async {
     try {
       final headers  = await _authHeaders();
@@ -131,8 +185,6 @@ class CartService {
   }
 
   // ─── PUT /api/customer/profile ─────────────────────────────────────────────
-  // Saves first_name, last_name, mobile_number, address (+ optional lat/lng pin).
-  // Used by CompleteProfileScreen (§1.1b) and AccountSettingsScreen (§1.9).
   Future<CustomerProfile> updateProfile({
     required String firstName,
     required String lastName,
@@ -169,8 +221,6 @@ class CartService {
   }
 
   // ─── POST /api/orders ──────────────────────────────────────────────────────
-  // Places a new online order.
-  // Body is constructed from PlaceOrderRequest.toJson().
   Future<PlaceOrderResponse> placeOrder(PlaceOrderRequest request) async {
     try {
       final headers  = await _authHeaders();

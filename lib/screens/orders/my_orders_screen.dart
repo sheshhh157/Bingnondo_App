@@ -11,7 +11,9 @@ import '../../widgets/app_widgets.dart';
 import '../tracking/order_tracking_screen.dart';
 
 class MyOrdersScreen extends StatefulWidget {
-  const MyOrdersScreen({super.key});
+  final VoidCallback? onBrowseMenu;
+
+  const MyOrdersScreen({super.key, this.onBrowseMenu});
 
   @override
   State<MyOrdersScreen> createState() => _MyOrdersScreenState();
@@ -75,6 +77,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
+        top: false,
         child: FadeTransition(
           opacity: _fade,
           child: Column(
@@ -93,16 +96,16 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
     );
   }
 
-  // ─── Header (title + tabs, rounded dark panel) ──────────────────────────────
+  // ─── Header (title + tabs) ─────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.primaryDark,
-        borderRadius:
-        BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
-      ),
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+      width: double.infinity,
+      color: AppColors.primaryDark,
+      padding: EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          MediaQuery.of(context).padding.top + AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.md),
       child: Column(
         children: [
           Row(
@@ -276,7 +279,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen>
               const SizedBox(height: AppSpacing.xl),
               PrimaryButton(
                 label: 'BROWSE MENU',
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  if (widget.onBrowseMenu != null) {
+                    widget.onBrowseMenu!();
+                  } else if (Navigator.of(context).canPop()) {
+                    Navigator.pop(context);
+                  }
+                },
                 isSmall: true,
               ),
             ],

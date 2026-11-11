@@ -13,11 +13,8 @@ import '../../widgets/app_widgets.dart';
 import 'login_screen.dart';
 
 class OtpScreen extends StatefulWidget {
-  /// Email address OR mobile number (09XXXXXXXXX)
+  /// Email address receiving the OTP.
   final String contact;
-
-  /// True if contact is a mobile number
-  final bool isMobile;
 
   /// True if this OTP is for a password reset flow
   final bool isPasswordReset;
@@ -25,7 +22,6 @@ class OtpScreen extends StatefulWidget {
   const OtpScreen({
     super.key,
     required this.contact,
-    this.isMobile = false,
     this.isPasswordReset = false,
   });
 
@@ -36,7 +32,6 @@ class OtpScreen extends StatefulWidget {
   }) {
     return OtpScreen(
       contact: email,
-      isMobile: false,
       isPasswordReset: isPasswordReset,
     );
   }
@@ -140,9 +135,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
 
         if (!mounted) return;
         setState(() {
-          _successMessage = widget.isMobile
-              ? 'Mobile number verified!'
-              : 'Email verified successfully!';
+          _successMessage = 'Email verified successfully!';
           _isVerified = true;
         });
       }
@@ -209,12 +202,6 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
   // ─── Mask contact for display ────────────────────────────────────────────
 
   String _maskContact(String contact) {
-    // Mobile: 09171234567 → 09171****67
-    if (widget.isMobile) {
-      if (contact.length < 7) return contact;
-      return '${contact.substring(0, 5)}****${contact.substring(contact.length - 2)}';
-    }
-
     // Email: angelo@gmail.com → an***@gmail.com
     final parts = contact.split('@');
     if (parts.length != 2) return contact;
@@ -257,7 +244,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           tooltip: 'Back',
         ),
         title: Text(
-          widget.isPasswordReset ? 'Reset Password' : (widget.isMobile ? 'Verify Mobile' : 'Verify Email'),
+          widget.isPasswordReset ? 'Reset Password' : 'Verify Email',
           style: GoogleFonts.playfairDisplaySc(
             fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary,
           ),
@@ -302,9 +289,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
               border: Border.all(color: AppColors.gold, width: 2),
             ),
             child: Icon(
-              widget.isMobile
-                  ? Icons.phone_android_rounded
-                  : Icons.mail_outline_rounded,
+              Icons.mail_outline_rounded,
               color: AppColors.gold,
               size: 36,
             ),
@@ -313,7 +298,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
           const SizedBox(height: AppSpacing.lg),
 
           Text(
-            widget.isPasswordReset ? 'Check your ${widget.isMobile ? 'messages' : 'inbox'}' : 'One last step',
+            widget.isPasswordReset ? 'Check your inbox' : 'One last step',
             style: AppTextStyles.display2(context),
             textAlign: TextAlign.center,
           ),
@@ -326,9 +311,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
               style: GoogleFonts.karla(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
               children: [
                 TextSpan(
-                  text: widget.isMobile
-                      ? 'We sent a 6-digit code via SMS to\n'
-                      : 'We sent a 6-digit code to\n',
+                  text: 'We sent a 6-digit code to\n',
                 ),
                 TextSpan(
                   text: _maskContact(widget.contact),
@@ -378,9 +361,7 @@ class _OtpScreenState extends State<OtpScreen> with TickerProviderStateMixin {
             _buildResendSection(context),
             const SizedBox(height: AppSpacing.xl),
             Text(
-              widget.isMobile
-                  ? 'Make sure your number is correct and has signal.'
-                  : 'Check your spam folder if you don\'t see it.',
+              'Check your spam folder if you don\'t see it.',
               style: AppTextStyles.caption(context),
               textAlign: TextAlign.center,
             ),

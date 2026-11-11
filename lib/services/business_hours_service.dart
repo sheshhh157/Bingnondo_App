@@ -9,7 +9,7 @@ import '../models/business_hours_models.dart';
 
 const String _baseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:3000',
+  defaultValue: 'https://bingnondobackend-production.up.railway.app',
 );
 
 class BusinessHoursApiException implements Exception {

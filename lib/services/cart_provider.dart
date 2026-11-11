@@ -22,32 +22,43 @@ class CartProvider extends ChangeNotifier {
   int get totalItemCount        => _items.fold(0, (sum, i) => sum + i.quantity);
   double get subtotal           => _items.fold(0, (sum, i) => sum + i.subtotal);
 
-  // ── Delivery fee — fetched from GET /api/payments/delivery-fee ───────────
-  double _deliveryFee     = 0.0;
+  // ── Delivery fee — fetched from GET /api/orders/checkout-config ──────────
+  double _deliveryFee        = 0.0;
   bool   _deliveryFeeEnabled = false;
-  bool   _loadingDeliveryFee = false;
-  double get deliveryFee  => _deliveryFeeEnabled ? _deliveryFee : 0.0;
-  double get totalAmount  => subtotal + deliveryFee;
+  bool   _loadingCheckoutConfig = false;
 
-  /// Fetches the admin-configured delivery fee. Safe to call repeatedly;
-  /// failures are non-fatal and keep the last known value.
-  Future<void> loadDeliveryFee() async {
-    if (_loadingDeliveryFee) return;
-    _loadingDeliveryFee = true;
+  // ── Rider availability — fetched from GET /api/orders/checkout-config ────
+  // true  = may available rider → delivery + pickup available
+  // false = walang rider online → pickup lang
+  bool _ridersAvailable = true;
+
+  double get deliveryFee    =>
+      _ridersAvailable && _deliveryFeeEnabled ? _deliveryFee : 0.0;
+  double get totalAmount    => subtotal + deliveryFee;
+  bool   get ridersAvailable => _ridersAvailable;
+
+  /// Fetches the admin-configured delivery fee AND rider availability.
+  /// Replaces the old loadDeliveryFee() — now one call covers both.
+  /// Safe to call repeatedly; failures are non-fatal.
+  Future<void> loadCheckoutConfig() async {
+    if (_loadingCheckoutConfig) return;
+    _loadingCheckoutConfig = true;
     try {
       if (kUseMock) {
         _deliveryFee        = 49.0;
         _deliveryFeeEnabled = true;
+        _ridersAvailable    = true; // mock: always available
       } else {
-        final feeData = await CartService.instance.fetchDeliveryFee();
-        _deliveryFee        = (feeData['amount'] as num?)?.toDouble() ?? 0.0;
-        _deliveryFeeEnabled = feeData['enabled'] as bool? ?? false;
+        final config = await CartService.instance.fetchCheckoutConfig();
+        _deliveryFee        = config.deliveryFeeAmount;
+        _deliveryFeeEnabled = config.deliveryFeeEnabled;
+        _ridersAvailable    = config.ridersAvailable;
       }
       notifyListeners();
     } catch (_) {
-      // Non-fatal — keep whatever fee we already had.
+      // Non-fatal — keep whatever values we already had.
     } finally {
-      _loadingDeliveryFee = false;
+      _loadingCheckoutConfig = false;
     }
   }
 
@@ -264,7 +275,6 @@ class CartProvider extends ChangeNotifier {
   }
 
   void goBack() {
-    // Only one back step now: payment → cart (pops the screen)
     if (_step == CheckoutStep.payment) {
       _step = CheckoutStep.cart;
       _clearError();
@@ -306,8 +316,9 @@ class CartProvider extends ChangeNotifier {
         _paymentMethod = PaymentMethod.gcash;
       }
 
-      // ── Fetch delivery fee from backend ────────────────────────────────
-      await loadDeliveryFee();
+      // ── Fetch checkout config (delivery fee + rider availability) ─────────
+      // This replaces the old loadDeliveryFee() call.
+      await loadCheckoutConfig();
 
       // Seed the delivery pin from the saved profile address (unless the
       // customer already chose one at checkout).
@@ -341,6 +352,7 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final pickupOnly = !_ridersAvailable;
       final request = PlaceOrderRequest(
         items:               List.from(_items),
         paymentMethod:       _paymentMethod,
@@ -348,14 +360,14 @@ class CartProvider extends ChangeNotifier {
         gcashReceiptTempUrl: _gcashExtractResult?.tempUrl,
         gcashRefNumber:      _gcashExtractResult?.gcashRefNumber,
         gcashAmountSent:     _gcashExtractResult?.gcashAmount,
-        deliveryAddress:     _deliveryAddress?.address,
-        deliveryLatitude:    _deliveryAddress?.latitude,
-        deliveryLongitude:   _deliveryAddress?.longitude,
-        deliveryFee:         deliveryFee,
+        deliveryAddress:     pickupOnly ? null : _deliveryAddress?.address,
+        deliveryLatitude:    pickupOnly ? null : _deliveryAddress?.latitude,
+        deliveryLongitude:   pickupOnly ? null : _deliveryAddress?.longitude,
+        deliveryFee:         pickupOnly ? 0 : deliveryFee,
+        deliveryPreference:  pickupOnly ? 'pickup' : 'own_delivery',
       );
 
       // Persist the new pin as the default address, if the customer asked for it.
-      // Best-effort: a failure here must not block placing the order.
       if (_saveAddressToProfile &&
           _deliveryAddress != null &&
           !_deliveryAddress!.isEmpty &&

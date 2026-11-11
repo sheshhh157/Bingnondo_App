@@ -4,13 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_map/flutter_map.dart';        // §1.9 rider map
-import 'package:latlong2/latlong.dart' hide Path;               // §1.9 LatLng
+import 'package:flutter_map/flutter_map.dart'; // §1.9 rider map
+import 'package:latlong2/latlong.dart' hide Path; // §1.9 LatLng
 import '../../models/tracking_models.dart';
 import '../../services/gcash_receipt_service.dart';
 import '../../services/order_tracking_provider.dart';
 import '../../services/orders_service.dart';
 import '../../services/socket_service.dart';
+import '../../services/tracking_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_widgets.dart';
 import '../chat/support_chat_screen.dart';
@@ -46,19 +47,25 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     super.initState();
 
     _fadeCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 450));
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    );
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
 
     _pulseCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
-    _pulse = Tween<double>(begin: 0.6, end: 1.0)
-        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulse = Tween<double>(
+      begin: 0.6,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
     _steamCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1400))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
     _steam = CurvedAnimation(parent: _steamCtrl, curve: Curves.easeInOut);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,10 +87,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -110,11 +119,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.primaryDark,
-        borderRadius:
-        BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(AppRadius.xl),
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.sm, AppSpacing.sm, AppSpacing.md, AppSpacing.md),
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.md,
+      ),
       child: Row(
         children: [
           IconButton(
@@ -152,19 +166,24 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
             onTap: () => _openChat(context, tracking.order?.id),
             child: Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.sm + 2, vertical: 6),
+                horizontal: AppSpacing.sm + 2,
+                vertical: 6,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.gold.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(
-                    color: AppColors.gold.withOpacity(0.5), width: 1),
+                  color: AppColors.gold.withOpacity(0.5),
+                  width: 1,
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CustomPaint(
-                      size: const Size(14, 14),
-                      painter: _ChatIconPainter()),
+                    size: const Size(14, 14),
+                    painter: _ChatIconPainter(),
+                  ),
                   const SizedBox(width: 5),
                   Text(
                     'Chat',
@@ -214,31 +233,29 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // ── Option C: Split hero (compact) ───────────────────────
-                  _StatusHeroCard(
-                    order: order,
-                    pulse: _pulse,
-                    steam: _steam,
-                  ),
+                  _StatusHeroCard(order: order, pulse: _pulse, steam: _steam),
 
                   // ── GCash rejection banner + re-upload ────────────────────
                   if (order.isGcash && order.isPaymentRejected) ...[
                     const SizedBox(height: AppSpacing.md),
                     _GcashRejectionBanner(
-                      orderId:         order.id,
+                      orderId: order.id,
                       rejectionReason: order.rejectionReason,
-                      onUploaded:      tracking.refresh,
+                      onUploaded: tracking.refresh,
                     ),
                   ],
 
                   const SizedBox(height: AppSpacing.lg),
 
                   // ── Option Z: Bigger vertical timeline ───────────────────
-                  if (!isCancelled) ...[
-                    _buildSectionLabel(context, 'Order Progress'),
-                    const SizedBox(height: AppSpacing.sm),
-                    _OrderTimeline(order: order, pulse: _pulse),
-                    const SizedBox(height: AppSpacing.lg),
-                  ],
+                  _buildSectionLabel(context, 'Order Progress'),
+                  const SizedBox(height: AppSpacing.sm),
+                  _OrderTimeline(
+                    order: order,
+                    timeline: tracking.timeline,
+                    pulse: _pulse,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
 
                   // ── §1.9 Rider live-location map ─────────────────────────
                   if (tracking.showRiderMap) ...[
@@ -246,7 +263,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
                     const SizedBox(height: AppSpacing.sm),
                     _RiderMapCard(
                       riderLocation: tracking.riderLocation!,
-                      deliveryInfo:  order.delivery,
+                      deliveryInfo: order.delivery,
                     ),
                     const SizedBox(height: AppSpacing.lg),
                   ],
@@ -268,7 +285,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
 
                   if (tracking.errorMessage != null) ...[
                     StatusBanner(
-                        message: tracking.errorMessage!, isError: true),
+                      message: tracking.errorMessage!,
+                      isError: true,
+                    ),
                     const SizedBox(height: AppSpacing.md),
                   ],
 
@@ -296,15 +315,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   Widget _buildSectionLabel(BuildContext context, String label) {
     return Row(
       children: [
-        CustomPaint(
-            size: const Size(12, 12), painter: _LanternDotPainter()),
+        CustomPaint(size: const Size(12, 12), painter: _LanternDotPainter()),
         const SizedBox(width: 6),
         Text(
           label.toUpperCase(),
-          style: AppTextStyles.label(context).copyWith(
-            fontSize: 12,
-            letterSpacing: 1.1,
-          ),
+          style: AppTextStyles.label(
+            context,
+          ).copyWith(fontSize: 12, letterSpacing: 1.1),
         ),
       ],
     );
@@ -327,23 +344,32 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
   }
 
   Widget _buildErrorState(
-      BuildContext context, OrderTrackingProvider tracking) {
+    BuildContext context,
+    OrderTrackingProvider tracking,
+  ) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded,
-                color: AppColors.textMuted, size: 48),
+            const Icon(
+              Icons.wifi_off_rounded,
+              color: AppColors.textMuted,
+              size: 48,
+            ),
             const SizedBox(height: AppSpacing.md),
-            Text('Could not load order',
-                style: AppTextStyles.headline(context),
-                textAlign: TextAlign.center),
+            Text(
+              'Could not load order',
+              style: AppTextStyles.headline(context),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpacing.sm),
-            Text(tracking.errorMessage ?? 'Please try again.',
-                style: AppTextStyles.bodyMedium(context),
-                textAlign: TextAlign.center),
+            Text(
+              tracking.errorMessage ?? 'Please try again.',
+              style: AppTextStyles.bodyMedium(context),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpacing.xl),
             PrimaryButton(
               label: 'TRY AGAIN',
@@ -362,28 +388,36 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.background,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.lg)),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Text('Cancel order?', style: AppTextStyles.headline(context)),
         content: Text(
           'Are you sure you want to cancel this order? '
-              'This may affect your account standing.',
+          'This may affect your account standing.',
           style: AppTextStyles.bodyMedium(context),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Keep Order',
-                style: AppTextStyles.bodyMedium(context)
-                    .copyWith(fontWeight: FontWeight.w600)),
+            child: Text(
+              'Keep Order',
+              style: AppTextStyles.bodyMedium(
+                context,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
               await tracking.cancelOrder();
             },
-            child: Text('Cancel Order',
-                style: GoogleFonts.karla(
-                    color: AppColors.error, fontWeight: FontWeight.w700)),
+            child: Text(
+              'Cancel Order',
+              style: GoogleFonts.karla(
+                color: AppColors.error,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -394,14 +428,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen>
     Navigator.push(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, anim, __) =>
-            SupportChatScreen(activeOrderId: orderId),
+        pageBuilder: (_, anim, __) => SupportChatScreen(activeOrderId: orderId),
         transitionsBuilder: (_, anim, __, child) => SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(1, 0),
             end: Offset.zero,
-          ).animate(
-              CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
           child: child,
         ),
         transitionDuration: const Duration(milliseconds: 350),
@@ -429,7 +461,7 @@ class _StatusHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCancelled = order.status == OrderStatus.cancelled;
     final isCompleted = order.status == OrderStatus.completed;
-    final isFinal     = isCancelled || isCompleted;
+    final isFinal = isCancelled || isCompleted;
 
     final Color statusColor = isCancelled
         ? AppColors.error
@@ -441,7 +473,9 @@ class _StatusHeroCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg, vertical: AppSpacing.md + 2),
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md + 2,
+      ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -473,8 +507,9 @@ class _StatusHeroCard extends StatelessWidget {
                           height: 64,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: AppColors.gold
-                                .withOpacity(pulse.value * 0.15),
+                            color: AppColors.gold.withOpacity(
+                              pulse.value * 0.15,
+                            ),
                           ),
                         ),
                       ),
@@ -542,12 +577,16 @@ class _StatusHeroCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
+                        horizontal: 10,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.gold.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(AppRadius.pill),
                         border: Border.all(
-                            color: AppColors.gold.withOpacity(0.35), width: 1),
+                          color: AppColors.gold.withOpacity(0.35),
+                          width: 1,
+                        ),
                       ),
                       child: Text(
                         order.orderNumber,
@@ -572,8 +611,11 @@ class _StatusHeroCard extends StatelessWidget {
           // ── Footer: last updated + live indicator ─────────────────────────
           Row(
             children: [
-              Icon(Icons.schedule_rounded,
-                  size: 13, color: AppColors.textOnDark.withOpacity(0.5)),
+              Icon(
+                Icons.schedule_rounded,
+                size: 13,
+                color: AppColors.textOnDark.withOpacity(0.5),
+              ),
               const SizedBox(width: 5),
               Text(
                 'Updated ${_timeAgo(lastUpdate)}',
@@ -594,8 +636,9 @@ class _StatusHeroCard extends StatelessWidget {
                         height: 7,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: AppColors.gold
-                              .withOpacity(0.4 + 0.6 * pulse.value),
+                          color: AppColors.gold.withOpacity(
+                            0.4 + 0.6 * pulse.value,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 5),
@@ -653,7 +696,10 @@ class _HeroStatusIcon extends StatelessWidget {
           animation: steam,
           builder: (_, __) => CustomPaint(
             size: const Size(28, 28),
-            painter: _SteamingBowlPainter(color: color, steamOffset: steam.value),
+            painter: _SteamingBowlPainter(
+              color: color,
+              steamOffset: steam.value,
+            ),
           ),
         );
       case OrderStatus.outForDelivery:
@@ -689,66 +735,111 @@ class _HeroStatusIcon extends StatelessWidget {
 // ─── Option Z: Order Timeline (bigger rows, unique icon per step) ──────────────
 class _OrderTimeline extends StatelessWidget {
   final OrderDetail order;
+  final OrderTimeline? timeline;
   final Animation<double> pulse;
 
-  const _OrderTimeline({required this.order, required this.pulse});
-
-  static const _steps = [
-    OrderStatus.pending,
-    OrderStatus.confirmed,
-    OrderStatus.preparing,
-    OrderStatus.ready,
-    OrderStatus.outForDelivery,
-    OrderStatus.completed,
-  ];
+  const _OrderTimeline({
+    required this.order,
+    required this.timeline,
+    required this.pulse,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final currentIdx = order.status.timelineIndex;
+    final isPickup =
+        timeline?.deliveryPreference == 'pickup' ||
+        (timeline?.deliveryPreference == null &&
+            order.delivery?.preference == 'pickup');
+    final steps = (timeline?.steps ?? const <TimelineStep>[])
+        .where((step) => !isPickup || step.status != 'out_for_delivery')
+        .toList();
 
     return Container(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.border),
         boxShadow: AppShadows.card,
       ),
-      child: Column(
-        children: List.generate(_steps.length, (i) {
-          final step = _steps[i];
-          final isDone = i < currentIdx;
-          final isActive = i == currentIdx;
-          final isLast = i == _steps.length - 1;
-
-          return _TimelineRow(
-            status: step,
-            isDone: isDone,
-            isActive: isActive,
-            isLast: isLast,
-            pulse: pulse,
-          );
-        }),
-      ),
+      child: steps.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Text(
+                'Order progress is not available yet.',
+                style: AppTextStyles.bodySmall(context),
+              ),
+            )
+          : Column(
+              children: List.generate(steps.length, (i) {
+                final step = steps[i];
+                return _TimelineRow(
+                  status: OrderStatusX.fromString(step.status),
+                  label: _stepLabel(step, isPickup: isPickup),
+                  isDone: step.isCompleted,
+                  isActive: step.isCurrent,
+                  isLast: i == steps.length - 1,
+                  isPickup: isPickup,
+                  pulse: pulse,
+                );
+              }),
+            ),
     );
+  }
+
+  String _stepLabel(TimelineStep step, {required bool isPickup}) {
+    switch (step.status) {
+      case 'ready':
+      case 'ready_for_pickup':
+        return isPickup ? 'Ready for Pickup' : step.label;
+      case 'completed':
+      case 'picked_up':
+        return isPickup ? 'Picked Up' : 'Delivered';
+      case 'delivered':
+        return 'Delivered';
+      case 'out_for_delivery':
+        return 'Out for Delivery';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return step.label;
+    }
   }
 }
 
 class _TimelineRow extends StatelessWidget {
   final OrderStatus status;
+  final String label;
   final bool isDone;
   final bool isActive;
   final bool isLast;
+  final bool isPickup;
   final Animation<double> pulse;
 
   const _TimelineRow({
     required this.status,
+    required this.label,
     required this.isDone,
     required this.isActive,
     required this.isLast,
+    required this.isPickup,
     required this.pulse,
   });
+
+  String _stepDescription(OrderStatus status, {required bool isPickup}) {
+    if (isPickup && status == OrderStatus.ready) {
+      return 'Your order is ready for pickup.';
+    }
+    if (isPickup && status == OrderStatus.completed) {
+      return 'Your order has been picked up.';
+    }
+    return status.description;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -768,57 +859,64 @@ class _TimelineRow extends StatelessWidget {
                   child: Center(
                     child: isActive
                         ? AnimatedBuilder(
-                      animation: pulse,
-                      builder: (_, __) => Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.gold
-                              .withOpacity(0.12 * pulse.value + 0.06),
-                          border: Border.all(
-                              color: AppColors.gold, width: 2),
-                        ),
-                        child: Center(
-                          child: CustomPaint(
-                            size: const Size(22, 22),
-                            painter: _TimelineIconPainter(
-                              status: status,
-                              isDone: isDone,
-                              isActive: isActive,
+                            animation: pulse,
+                            builder: (_, __) => Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppColors.gold.withOpacity(
+                                  0.12 * pulse.value + 0.06,
+                                ),
+                                border: Border.all(
+                                  color: AppColors.gold,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Center(
+                                child: CustomPaint(
+                                  size: const Size(22, 22),
+                                  painter: _TimelineIconPainter(
+                                    status: status,
+                                    isDone: isDone,
+                                    isActive: isActive,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isDone
+                                  ? AppColors.gold
+                                  : AppColors.surfaceWarm,
+                              border: isDone
+                                  ? null
+                                  : Border.all(
+                                      color: AppColors.border,
+                                      width: 1.5,
+                                    ),
+                            ),
+                            child: Center(
+                              child: isDone
+                                  ? const Icon(
+                                      Icons.check_rounded,
+                                      size: 18,
+                                      color: AppColors.primaryDark,
+                                    )
+                                  : CustomPaint(
+                                      size: const Size(22, 22),
+                                      painter: _TimelineIconPainter(
+                                        status: status,
+                                        isDone: isDone,
+                                        isActive: isActive,
+                                      ),
+                                    ),
                             ),
                           ),
-                        ),
-                      ),
-                    )
-                        : Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isDone
-                            ? AppColors.gold
-                            : AppColors.surfaceWarm,
-                        border: isDone
-                            ? null
-                            : Border.all(
-                            color: AppColors.border, width: 1.5),
-                      ),
-                      child: Center(
-                        child: isDone
-                            ? const Icon(Icons.check_rounded,
-                            size: 18,
-                            color: AppColors.primaryDark)
-                            : CustomPaint(
-                          size: const Size(22, 22),
-                          painter: _TimelineIconPainter(
-                            status: status,
-                            isDone: isDone,
-                            isActive: isActive,
-                          ),
-                        ),
-                      ),
-                    ),
                   ),
                 ),
                 // Connector
@@ -854,7 +952,7 @@ class _TimelineRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    status.label,
+                    label,
                     style: GoogleFonts.karla(
                       fontSize: 15,
                       fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
@@ -869,7 +967,7 @@ class _TimelineRow extends StatelessWidget {
                   if (isActive) ...[
                     const SizedBox(height: 3),
                     Text(
-                      status.description,
+                      _stepDescription(status, isPickup: isPickup),
                       style: GoogleFonts.karla(
                         fontSize: 12,
                         color: AppColors.gold,
@@ -914,7 +1012,8 @@ class _TimelineIconPainter extends CustomPainter {
     final color = isActive
         ? AppColors.gold
         : isDone
-        ? AppColors.primaryDark // on gold bg
+        ? AppColors
+              .primaryDark // on gold bg
         : AppColors.textMuted;
 
     final p = Paint()
@@ -928,104 +1027,129 @@ class _TimelineIconPainter extends CustomPainter {
     final h = size.height;
 
     switch (status) {
-    // Pending → clock
+      // Pending → clock
       case OrderStatus.pending:
         canvas.drawCircle(Offset(w / 2, h / 2), w * 0.42, p);
-        canvas.drawLine(
-            Offset(w / 2, h * 0.25), Offset(w / 2, h / 2), p);
-        canvas.drawLine(
-            Offset(w / 2, h / 2), Offset(w * 0.68, h * 0.62), p);
+        canvas.drawLine(Offset(w / 2, h * 0.25), Offset(w / 2, h / 2), p);
+        canvas.drawLine(Offset(w / 2, h / 2), Offset(w * 0.68, h * 0.62), p);
         break;
 
-    // Confirmed → document tick
+      // Confirmed → document tick
       case OrderStatus.confirmed:
         canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(w * 0.15, 0, w * 0.7, h),
-                const Radius.circular(3)),
-            p);
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.15, 0, w * 0.7, h),
+            const Radius.circular(3),
+          ),
+          p,
+        );
         canvas.drawPath(
-            Path()
-              ..moveTo(w * 0.3, h * 0.5)
-              ..lineTo(w * 0.45, h * 0.65)
-              ..lineTo(w * 0.7, h * 0.38),
-            p..strokeWidth = 1.8);
+          Path()
+            ..moveTo(w * 0.3, h * 0.5)
+            ..lineTo(w * 0.45, h * 0.65)
+            ..lineTo(w * 0.7, h * 0.38),
+          p..strokeWidth = 1.8,
+        );
         break;
 
-    // Preparing → steaming bowl (static for timeline, animated only in hero)
+      // Preparing → steaming bowl (static for timeline, animated only in hero)
       case OrderStatus.preparing:
-      // Bowl
+        // Bowl
         canvas.drawOval(
-            Rect.fromLTWH(w * 0.05, h * 0.5, w * 0.9, h * 0.38),
-            p..strokeWidth = 1.5);
+          Rect.fromLTWH(w * 0.05, h * 0.5, w * 0.9, h * 0.38),
+          p..strokeWidth = 1.5,
+        );
         canvas.drawLine(
-            Offset(w * 0.05, h * 0.69), Offset(w * 0.95, h * 0.69),
-            p..strokeWidth = 1.2);
+          Offset(w * 0.05, h * 0.69),
+          Offset(w * 0.95, h * 0.69),
+          p..strokeWidth = 1.2,
+        );
         // Three steam wisps
         for (int i = 0; i < 3; i++) {
           final x = w * (0.28 + i * 0.22);
           canvas.drawPath(
-              Path()
-                ..moveTo(x, h * 0.48)
-                ..quadraticBezierTo(x + w * 0.07, h * 0.35, x, h * 0.22)
-                ..quadraticBezierTo(x - w * 0.07, h * 0.09, x, 0),
-              p..strokeWidth = 1.2
-                ..color = color.withOpacity(0.65));
+            Path()
+              ..moveTo(x, h * 0.48)
+              ..quadraticBezierTo(x + w * 0.07, h * 0.35, x, h * 0.22)
+              ..quadraticBezierTo(x - w * 0.07, h * 0.09, x, 0),
+            p
+              ..strokeWidth = 1.2
+              ..color = color.withOpacity(0.65),
+          );
         }
         break;
 
-    // Ready → box / package
+      // Ready → box / package
       case OrderStatus.ready:
-      // Box body
+        // Box body
         canvas.drawRRect(
-            RRect.fromRectAndRadius(
-                Rect.fromLTWH(w * 0.1, h * 0.3, w * 0.8, h * 0.65),
-                const Radius.circular(2)),
-            p..strokeWidth = 1.5..color = color);
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.1, h * 0.3, w * 0.8, h * 0.65),
+            const Radius.circular(2),
+          ),
+          p
+            ..strokeWidth = 1.5
+            ..color = color,
+        );
         // Box lid
         canvas.drawPath(
-            Path()
-              ..moveTo(0, h * 0.3)
-              ..lineTo(w * 0.5, h * 0.1)
-              ..lineTo(w, h * 0.3),
-            p..strokeWidth = 1.4);
+          Path()
+            ..moveTo(0, h * 0.3)
+            ..lineTo(w * 0.5, h * 0.1)
+            ..lineTo(w, h * 0.3),
+          p..strokeWidth = 1.4,
+        );
         // Box stripe
         canvas.drawLine(
-            Offset(w / 2, h * 0.1), Offset(w / 2, h * 0.95),
-            p..strokeWidth = 1.2..color = color.withOpacity(0.5));
+          Offset(w / 2, h * 0.1),
+          Offset(w / 2, h * 0.95),
+          p
+            ..strokeWidth = 1.2
+            ..color = color.withOpacity(0.5),
+        );
         break;
 
-    // Out for delivery → motorbike
+      // Out for delivery → motorbike
       case OrderStatus.outForDelivery:
-      // Wheels
+        // Wheels
         canvas.drawCircle(
-            Offset(w * 0.22, h * 0.72), w * 0.19,
-            p..strokeWidth = 1.6..color = color);
-        canvas.drawCircle(
-            Offset(w * 0.78, h * 0.72), w * 0.19, p);
+          Offset(w * 0.22, h * 0.72),
+          w * 0.19,
+          p
+            ..strokeWidth = 1.6
+            ..color = color,
+        );
+        canvas.drawCircle(Offset(w * 0.78, h * 0.72), w * 0.19, p);
         // Frame
         canvas.drawPath(
-            Path()
-              ..moveTo(w * 0.22, h * 0.72)
-              ..lineTo(w * 0.4, h * 0.32)
-              ..lineTo(w * 0.62, h * 0.32)
-              ..lineTo(w * 0.78, h * 0.72)
-              ..moveTo(w * 0.5, h * 0.32)
-              ..lineTo(w * 0.5, h * 0.16)
-              ..lineTo(w * 0.62, h * 0.16),
-            p..strokeWidth = 1.5);
+          Path()
+            ..moveTo(w * 0.22, h * 0.72)
+            ..lineTo(w * 0.4, h * 0.32)
+            ..lineTo(w * 0.62, h * 0.32)
+            ..lineTo(w * 0.78, h * 0.72)
+            ..moveTo(w * 0.5, h * 0.32)
+            ..lineTo(w * 0.5, h * 0.16)
+            ..lineTo(w * 0.62, h * 0.16),
+          p..strokeWidth = 1.5,
+        );
         break;
 
-    // Completed → checkmark in circle
+      // Completed → checkmark in circle
       case OrderStatus.completed:
-        canvas.drawCircle(Offset(w / 2, h / 2), w * 0.42,
-            p..strokeWidth = 1.5..color = color);
+        canvas.drawCircle(
+          Offset(w / 2, h / 2),
+          w * 0.42,
+          p
+            ..strokeWidth = 1.5
+            ..color = color,
+        );
         canvas.drawPath(
-            Path()
-              ..moveTo(w * 0.24, h * 0.52)
-              ..lineTo(w * 0.42, h * 0.70)
-              ..lineTo(w * 0.76, h * 0.34),
-            p..strokeWidth = 2.0);
+          Path()
+            ..moveTo(w * 0.24, h * 0.52)
+            ..lineTo(w * 0.42, h * 0.70)
+            ..lineTo(w * 0.76, h * 0.34),
+          p..strokeWidth = 2.0,
+        );
         break;
 
       case OrderStatus.cancelled:
@@ -1045,8 +1169,7 @@ class _SteamingBowlPainter extends CustomPainter {
   final Color color;
   final double steamOffset; // 0.0 → 1.0, drives upward steam
 
-  const _SteamingBowlPainter(
-      {required this.color, required this.steamOffset});
+  const _SteamingBowlPainter({required this.color, required this.steamOffset});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1061,15 +1184,15 @@ class _SteamingBowlPainter extends CustomPainter {
     final h = size.height;
 
     // Bowl rim
-    canvas.drawOval(
-        Rect.fromLTWH(w * 0.05, h * 0.52, w * 0.9, h * 0.32), p);
+    canvas.drawOval(Rect.fromLTWH(w * 0.05, h * 0.52, w * 0.9, h * 0.32), p);
     // Bowl bottom curve
     canvas.drawPath(
-        Path()
-          ..moveTo(w * 0.05, h * 0.68)
-          ..quadraticBezierTo(w * 0.05, h * 0.96, w / 2, h * 0.96)
-          ..quadraticBezierTo(w * 0.95, h * 0.96, w * 0.95, h * 0.68),
-        p);
+      Path()
+        ..moveTo(w * 0.05, h * 0.68)
+        ..quadraticBezierTo(w * 0.05, h * 0.96, w / 2, h * 0.96)
+        ..quadraticBezierTo(w * 0.95, h * 0.96, w * 0.95, h * 0.68),
+      p,
+    );
 
     // Animated steam wisps
     final steamDy = steamOffset * h * 0.18;
@@ -1080,13 +1203,14 @@ class _SteamingBowlPainter extends CustomPainter {
     for (int i = 0; i < 3; i++) {
       final x = w * (0.28 + i * 0.22);
       canvas.drawPath(
-          Path()
-            ..moveTo(x, h * 0.50)
-            ..quadraticBezierTo(x + w * 0.09, h * 0.35, x, h * 0.20)
-            ..quadraticBezierTo(x - w * 0.09, h * 0.05, x, 0),
-          p
-            ..color = color.withOpacity(steamAlpha * 0.85)
-            ..strokeWidth = 1.5);
+        Path()
+          ..moveTo(x, h * 0.50)
+          ..quadraticBezierTo(x + w * 0.09, h * 0.35, x, h * 0.20)
+          ..quadraticBezierTo(x - w * 0.09, h * 0.05, x, 0),
+        p
+          ..color = color.withOpacity(steamAlpha * 0.85)
+          ..strokeWidth = 1.5,
+      );
     }
     canvas.restore();
 
@@ -1094,8 +1218,12 @@ class _SteamingBowlPainter extends CustomPainter {
     for (int i = 0; i < 3; i++) {
       final y = h * (0.57 + i * 0.06);
       canvas.drawLine(
-          Offset(w * 0.22, y), Offset(w * 0.78, y),
-          p..color = color.withOpacity(0.35)..strokeWidth = 1.2);
+        Offset(w * 0.22, y),
+        Offset(w * 0.78, y),
+        p
+          ..color = color.withOpacity(0.35)
+          ..strokeWidth = 1.2,
+      );
     }
   }
 
@@ -1124,15 +1252,16 @@ class _BikeIconPainter extends CustomPainter {
     canvas.drawCircle(Offset(w * 0.78, h * 0.70), w * 0.19, p);
 
     canvas.drawPath(
-        Path()
-          ..moveTo(w * 0.22, h * 0.70)
-          ..lineTo(w * 0.40, h * 0.30)
-          ..lineTo(w * 0.63, h * 0.30)
-          ..lineTo(w * 0.78, h * 0.70)
-          ..moveTo(w * 0.50, h * 0.30)
-          ..lineTo(w * 0.50, h * 0.12)
-          ..lineTo(w * 0.64, h * 0.12),
-        p);
+      Path()
+        ..moveTo(w * 0.22, h * 0.70)
+        ..lineTo(w * 0.40, h * 0.30)
+        ..lineTo(w * 0.63, h * 0.30)
+        ..lineTo(w * 0.78, h * 0.70)
+        ..moveTo(w * 0.50, h * 0.30)
+        ..lineTo(w * 0.50, h * 0.12)
+        ..lineTo(w * 0.64, h * 0.12),
+      p,
+    );
   }
 
   @override
@@ -1153,11 +1282,12 @@ class _CheckIconPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
 
     canvas.drawPath(
-        Path()
-          ..moveTo(size.width * 0.14, size.height * 0.52)
-          ..lineTo(size.width * 0.40, size.height * 0.76)
-          ..lineTo(size.width * 0.86, size.height * 0.26),
-        p);
+      Path()
+        ..moveTo(size.width * 0.14, size.height * 0.52)
+        ..lineTo(size.width * 0.40, size.height * 0.76)
+        ..lineTo(size.width * 0.86, size.height * 0.26),
+      p,
+    );
   }
 
   @override
@@ -1177,11 +1307,15 @@ class _XIconPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     canvas.drawLine(
-        Offset(size.width * 0.2, size.height * 0.2),
-        Offset(size.width * 0.8, size.height * 0.8), p);
+      Offset(size.width * 0.2, size.height * 0.2),
+      Offset(size.width * 0.8, size.height * 0.8),
+      p,
+    );
     canvas.drawLine(
-        Offset(size.width * 0.8, size.height * 0.2),
-        Offset(size.width * 0.2, size.height * 0.8), p);
+      Offset(size.width * 0.8, size.height * 0.2),
+      Offset(size.width * 0.2, size.height * 0.8),
+      p,
+    );
   }
 
   @override
@@ -1201,13 +1335,20 @@ class _ClockIconPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     canvas.drawCircle(
-        Offset(size.width / 2, size.height / 2), size.width * 0.42, p);
+      Offset(size.width / 2, size.height / 2),
+      size.width * 0.42,
+      p,
+    );
     canvas.drawLine(
-        Offset(size.width / 2, size.height * 0.26),
-        Offset(size.width / 2, size.height / 2), p);
+      Offset(size.width / 2, size.height * 0.26),
+      Offset(size.width / 2, size.height / 2),
+      p,
+    );
     canvas.drawLine(
-        Offset(size.width / 2, size.height / 2),
-        Offset(size.width * 0.68, size.height * 0.62), p);
+      Offset(size.width / 2, size.height / 2),
+      Offset(size.width * 0.68, size.height * 0.62),
+      p,
+    );
   }
 
   @override
@@ -1263,25 +1404,29 @@ class _DeliveryInfoCard extends StatelessWidget {
                 ),
                 if (delivery.riderName != null) ...[
                   const SizedBox(height: 2),
-                  Text(delivery.riderName!,
-                      style: AppTextStyles.bodyMedium(context)),
+                  Text(
+                    delivery.riderName!,
+                    style: AppTextStyles.bodyMedium(context),
+                  ),
                 ],
                 if (delivery.riderContact != null) ...[
                   const SizedBox(height: 2),
                   GestureDetector(
                     onTap: () {
                       Clipboard.setData(
-                          ClipboardData(text: delivery.riderContact!));
+                        ClipboardData(text: delivery.riderContact!),
+                      );
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Row(
                             children: const [
-                              Icon(Icons.check_circle_rounded,
-                                  color: AppColors.gold, size: 18),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text('Contact number copied'),
+                              Icon(
+                                Icons.check_circle_rounded,
+                                color: AppColors.gold,
+                                size: 18,
                               ),
+                              SizedBox(width: 8),
+                              Expanded(child: Text('Contact number copied')),
                             ],
                           ),
                         ),
@@ -1290,21 +1435,29 @@ class _DeliveryInfoCard extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(delivery.riderContact!,
-                            style: AppTextStyles.bodyMedium(context).copyWith(
-                                color: AppColors.gold,
-                                fontWeight: FontWeight.w600)),
+                        Text(
+                          delivery.riderContact!,
+                          style: AppTextStyles.bodyMedium(context).copyWith(
+                            color: AppColors.gold,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         const SizedBox(width: 5),
-                        const Icon(Icons.copy_rounded,
-                            size: 13, color: AppColors.gold),
+                        const Icon(
+                          Icons.copy_rounded,
+                          size: 13,
+                          color: AppColors.gold,
+                        ),
                       ],
                     ),
                   ),
                 ],
                 if (delivery.lalamoveBookingId != null) ...[
                   const SizedBox(height: 2),
-                  Text('Booking: ${delivery.lalamoveBookingId}',
-                      style: AppTextStyles.caption(context)),
+                  Text(
+                    'Booking: ${delivery.lalamoveBookingId}',
+                    style: AppTextStyles.caption(context),
+                  ),
                 ],
               ],
             ),
@@ -1332,79 +1485,94 @@ class _OrderItemsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ...order.items.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.md),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.gold.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(AppRadius.sm),
-                    border: Border.all(color: AppColors.gold.withOpacity(0.3)),
-                  ),
-                  child: Text(
-                    '${item.quantity}×',
-                    style: GoogleFonts.karla(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.gold,
+          ...order.items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      border: Border.all(
+                        color: AppColors.gold.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Text(
+                      '${item.quantity}×',
+                      style: GoogleFonts.karla(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.gold,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.sm + 2),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.name,
-                          style: AppTextStyles.bodyMedium(context)
-                              .copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                              fontSize: 13)),
-                      if (item.note != null && item.note!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text('Note: ${item.note}',
-                              style: AppTextStyles.caption(context).copyWith(
-                                  color: AppColors.textMuted,
-                                  fontStyle: FontStyle.italic)),
+                  const SizedBox(width: AppSpacing.sm + 2),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.name,
+                          style: AppTextStyles.bodyMedium(context).copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                          ),
                         ),
-                    ],
+                        if (item.note != null && item.note!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              'Note: ${item.note}',
+                              style: AppTextStyles.caption(context).copyWith(
+                                color: AppColors.textMuted,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                Text(
-                  '₱${item.subtotal.toStringAsFixed(2)}',
-                  style: GoogleFonts.karla(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    '₱${item.subtotal.toStringAsFixed(2)}',
+                    style: GoogleFonts.karla(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          )),
+          ),
 
           const Divider(color: AppColors.border, height: AppSpacing.lg),
 
           if (order.notes != null && order.notes!.isNotEmpty) ...[
-            Text('Order note: ${order.notes}',
-                style: AppTextStyles.caption(context)
-                    .copyWith(fontStyle: FontStyle.italic)),
+            Text(
+              'Order note: ${order.notes}',
+              style: AppTextStyles.caption(
+                context,
+              ).copyWith(fontStyle: FontStyle.italic),
+            ),
             const SizedBox(height: AppSpacing.sm),
           ],
 
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Total',
-                  style: AppTextStyles.label(context)
-                      .copyWith(color: AppColors.textPrimary)),
+              Text(
+                'Total',
+                style: AppTextStyles.label(
+                  context,
+                ).copyWith(color: AppColors.textPrimary),
+              ),
               Text(
                 '₱${order.totalAmount.toStringAsFixed(2)}',
                 style: GoogleFonts.playfairDisplaySc(
@@ -1421,8 +1589,9 @@ class _OrderItemsCard extends StatelessWidget {
               Text('Payment: ', style: AppTextStyles.caption(context)),
               Text(
                 order.paymentMethod == 'gcash' ? 'GCash' : 'Cash on Delivery',
-                style: AppTextStyles.caption(context)
-                    .copyWith(fontWeight: FontWeight.w700),
+                style: AppTextStyles.caption(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -1435,8 +1604,10 @@ class _OrderItemsCard extends StatelessWidget {
 class _CancelOrderButton extends StatelessWidget {
   final bool isCancelling;
   final VoidCallback onCancel;
-  const _CancelOrderButton(
-      {required this.isCancelling, required this.onCancel});
+  const _CancelOrderButton({
+    required this.isCancelling,
+    required this.onCancel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1445,29 +1616,34 @@ class _CancelOrderButton extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.error,
         side: BorderSide(
-            color: isCancelling
-                ? AppColors.error.withOpacity(0.3)
-                : AppColors.error,
-            width: 1.5),
+          color: isCancelling
+              ? AppColors.error.withOpacity(0.3)
+              : AppColors.error,
+          width: 1.5,
+        ),
         minimumSize: const Size(double.infinity, 48),
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md)),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
       ),
       child: isCancelling
           ? const SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(
-              color: AppColors.error, strokeWidth: 2))
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                color: AppColors.error,
+                strokeWidth: 2,
+              ),
+            )
           : Text(
-        'CANCEL ORDER',
-        style: GoogleFonts.karla(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: AppColors.error,
-          letterSpacing: 0.5,
-        ),
-      ),
+              'CANCEL ORDER',
+              style: GoogleFonts.karla(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: AppColors.error,
+                letterSpacing: 0.5,
+              ),
+            ),
     );
   }
 }
@@ -1496,25 +1672,35 @@ class _ChatCta extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: CustomPaint(
-                  size: const Size(18, 18), painter: _ChatIconPainter()),
+                size: const Size(18, 18),
+                painter: _ChatIconPainter(),
+              ),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Questions about your order?',
-                      style: GoogleFonts.karla(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary)),
-                  Text('Chat with our staff directly.',
-                      style: AppTextStyles.caption(context)),
+                  Text(
+                    'Questions about your order?',
+                    style: GoogleFonts.karla(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    'Chat with our staff directly.',
+                    style: AppTextStyles.caption(context),
+                  ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.gold, size: 20),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.gold,
+              size: 20,
+            ),
           ],
         ),
       ),
@@ -1541,8 +1727,9 @@ class _SkeletonBoxState extends State<_SkeletonBox>
   void initState() {
     super.initState();
     _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900))
-      ..repeat(reverse: true);
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
   }
 
@@ -1560,7 +1747,10 @@ class _SkeletonBoxState extends State<_SkeletonBox>
         height: widget.height,
         decoration: BoxDecoration(
           color: Color.lerp(
-              const Color(0xFFEFEBE4), const Color(0xFFDDD8CF), _anim.value),
+            const Color(0xFFEFEBE4),
+            const Color(0xFFDDD8CF),
+            _anim.value,
+          ),
           borderRadius: BorderRadius.circular(widget.radius),
         ),
       ),
@@ -1574,11 +1764,16 @@ class _LanternDotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawOval(
-        Rect.fromLTWH(size.width * 0.1, size.height * 0.2,
-            size.width * 0.8, size.height * 0.6),
-        Paint()
-          ..color = AppColors.gold
-          ..style = PaintingStyle.fill);
+      Rect.fromLTWH(
+        size.width * 0.1,
+        size.height * 0.2,
+        size.width * 0.8,
+        size.height * 0.6,
+      ),
+      Paint()
+        ..color = AppColors.gold
+        ..style = PaintingStyle.fill,
+    );
   }
 
   @override
@@ -1595,17 +1790,23 @@ class _ChatIconPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(0, 0, size.width * 0.9, size.height * 0.8),
-            const Radius.circular(5)),
-        p);
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, size.width * 0.9, size.height * 0.8),
+        const Radius.circular(5),
+      ),
+      p,
+    );
     canvas.drawLine(
-        Offset(size.width * 0.1, size.height * 0.8),
-        Offset(0, size.height), p);
+      Offset(size.width * 0.1, size.height * 0.8),
+      Offset(0, size.height),
+      p,
+    );
     for (int i = 0; i < 3; i++) {
       canvas.drawLine(
-          Offset(size.width * (0.2 + i * 0.25), size.height * 0.35),
-          Offset(size.width * (0.2 + i * 0.25), size.height * 0.45), p);
+        Offset(size.width * (0.2 + i * 0.25), size.height * 0.35),
+        Offset(size.width * (0.2 + i * 0.25), size.height * 0.45),
+        p,
+      );
     }
   }
 
@@ -1623,19 +1824,26 @@ class _RiderIconPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawCircle(
-        Offset(size.width * 0.22, size.height * 0.65), size.width * 0.2, p);
+      Offset(size.width * 0.22, size.height * 0.65),
+      size.width * 0.2,
+      p,
+    );
     canvas.drawCircle(
-        Offset(size.width * 0.78, size.height * 0.65), size.width * 0.2, p);
+      Offset(size.width * 0.78, size.height * 0.65),
+      size.width * 0.2,
+      p,
+    );
     canvas.drawPath(
-        Path()
-          ..moveTo(size.width * 0.22, size.height * 0.65)
-          ..lineTo(size.width * 0.42, size.height * 0.28)
-          ..lineTo(size.width * 0.65, size.height * 0.28)
-          ..lineTo(size.width * 0.78, size.height * 0.65)
-          ..moveTo(size.width * 0.5, size.height * 0.28)
-          ..lineTo(size.width * 0.5, size.height * 0.12)
-          ..lineTo(size.width * 0.62, size.height * 0.12),
-        p);
+      Path()
+        ..moveTo(size.width * 0.22, size.height * 0.65)
+        ..lineTo(size.width * 0.42, size.height * 0.28)
+        ..lineTo(size.width * 0.65, size.height * 0.28)
+        ..lineTo(size.width * 0.78, size.height * 0.65)
+        ..moveTo(size.width * 0.5, size.height * 0.28)
+        ..lineTo(size.width * 0.5, size.height * 0.12)
+        ..lineTo(size.width * 0.62, size.height * 0.12),
+      p,
+    );
   }
 
   @override
@@ -1652,24 +1860,40 @@ class _LalamoveIconPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(0, size.height * 0.2, size.width * 0.72,
-                size.height * 0.55),
-            const Radius.circular(3)),
-        p);
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          0,
+          size.height * 0.2,
+          size.width * 0.72,
+          size.height * 0.55,
+        ),
+        const Radius.circular(3),
+      ),
+      p,
+    );
     canvas.drawPath(
-        Path()
-          ..moveTo(size.width * 0.72, size.height * 0.35)
-          ..lineTo(size.width * 0.98, size.height * 0.45)
-          ..lineTo(size.width * 0.98, size.height * 0.75)
-          ..lineTo(size.width * 0.72, size.height * 0.75),
-        p);
+      Path()
+        ..moveTo(size.width * 0.72, size.height * 0.35)
+        ..lineTo(size.width * 0.98, size.height * 0.45)
+        ..lineTo(size.width * 0.98, size.height * 0.75)
+        ..lineTo(size.width * 0.72, size.height * 0.75),
+      p,
+    );
     canvas.drawCircle(
-        Offset(size.width * 0.2, size.height * 0.8), size.width * 0.09, p);
+      Offset(size.width * 0.2, size.height * 0.8),
+      size.width * 0.09,
+      p,
+    );
     canvas.drawCircle(
-        Offset(size.width * 0.58, size.height * 0.8), size.width * 0.09, p);
+      Offset(size.width * 0.58, size.height * 0.8),
+      size.width * 0.09,
+      p,
+    );
     canvas.drawCircle(
-        Offset(size.width * 0.88, size.height * 0.8), size.width * 0.09, p);
+      Offset(size.width * 0.88, size.height * 0.8),
+      size.width * 0.09,
+      p,
+    );
   }
 
   @override
@@ -1680,8 +1904,8 @@ class _LalamoveIconPainter extends CustomPainter {
 // GCash Rejection Banner + Re-upload
 // ══════════════════════════════════════════════════════════════════════════════
 class _GcashRejectionBanner extends StatefulWidget {
-  final int       orderId;
-  final String?   rejectionReason;
+  final int orderId;
+  final String? rejectionReason;
   final VoidCallback onUploaded; // called after successful re-upload to refresh
 
   const _GcashRejectionBanner({
@@ -1697,25 +1921,26 @@ class _GcashRejectionBanner extends StatefulWidget {
 class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
   final _picker = ImagePicker();
 
-  File?   _pickedImage;
+  File? _pickedImage;
   String? _mimeType;
-  bool    _isUploading  = false;
+  bool _isUploading = false;
   String? _uploadError;
-  bool    _uploadDone   = false;
+  bool _uploadDone = false;
 
   Future<void> _pickImage(ImageSource source) async {
     final picked = await _picker.pickImage(
-      source:       source,
+      source: source,
       imageQuality: 85,
-      maxWidth:     1600,
+      maxWidth: 1600,
     );
     if (picked == null) return;
     setState(() {
-      _pickedImage  = File(picked.path);
-      _mimeType     = picked.path.toLowerCase().endsWith('.png')
-          ? 'image/png' : 'image/jpeg';
-      _uploadError  = null;
-      _uploadDone   = false;
+      _pickedImage = File(picked.path);
+      _mimeType = picked.path.toLowerCase().endsWith('.png')
+          ? 'image/png'
+          : 'image/jpeg';
+      _uploadError = null;
+      _uploadDone = false;
     });
   }
 
@@ -1724,51 +1949,80 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (_) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 36, height: 4,
-            decoration: BoxDecoration(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
                 color: AppColors.border,
-                borderRadius: BorderRadius.circular(2)),
-          ),
-          const SizedBox(height: 16),
-          ListTile(
-            leading: const Icon(Icons.photo_library_rounded,
-                color: AppColors.primary),
-            title: Text('Choose from Gallery',
-                style: GoogleFonts.karla(fontWeight: FontWeight.w600)),
-            onTap: () { Navigator.pop(context); _pickImage(ImageSource.gallery); },
-          ),
-          ListTile(
-            leading: const Icon(Icons.camera_alt_rounded,
-                color: AppColors.primary),
-            title: Text('Take a Photo',
-                style: GoogleFonts.karla(fontWeight: FontWeight.w600)),
-            onTap: () { Navigator.pop(context); _pickImage(ImageSource.camera); },
-          ),
-          const SizedBox(height: 8),
-        ]),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(
+                Icons.photo_library_rounded,
+                color: AppColors.primary,
+              ),
+              title: Text(
+                'Choose from Gallery',
+                style: GoogleFonts.karla(fontWeight: FontWeight.w600),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.camera_alt_rounded,
+                color: AppColors.primary,
+              ),
+              title: Text(
+                'Take a Photo',
+                style: GoogleFonts.karla(fontWeight: FontWeight.w600),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _submitReupload() async {
     if (_pickedImage == null) return;
-    setState(() { _isUploading = true; _uploadError = null; });
+    setState(() {
+      _isUploading = true;
+      _uploadError = null;
+    });
 
     try {
       await OrdersService.instance.reuploadReceipt(
-        orderId:   widget.orderId,
+        orderId: widget.orderId,
         imageFile: _pickedImage!,
-        mimeType:  _mimeType ?? 'image/jpeg',
+        mimeType: _mimeType ?? 'image/jpeg',
       );
-      setState(() { _isUploading = false; _uploadDone = true; });
+      setState(() {
+        _isUploading = false;
+        _uploadDone = true;
+      });
       widget.onUploaded();
     } on OrdersApiException catch (e) {
-      setState(() { _isUploading = false; _uploadError = e.message; });
+      setState(() {
+        _isUploading = false;
+        _uploadError = e.message;
+      });
     } catch (e) {
       setState(() {
         _isUploading = false;
@@ -1781,82 +2035,93 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
   Widget build(BuildContext context) {
     if (_uploadDone) {
       return Container(
-        padding:    const EdgeInsets.all(AppSpacing.md),
+        padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color:        Colors.green.shade50,
+          color: Colors.green.shade50,
           borderRadius: BorderRadius.circular(AppRadius.lg),
-          border:       Border.all(color: Colors.green.shade300),
+          border: Border.all(color: Colors.green.shade300),
         ),
-        child: Row(children: [
-          Icon(Icons.check_circle_rounded,
-              color: Colors.green.shade600, size: 20),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              'Receipt re-submitted! We\'ll verify it shortly.',
-              style: GoogleFonts.karla(
-                  fontSize:   13,
-                  fontWeight: FontWeight.w600,
-                  color:      Colors.green.shade700),
-            ),
-          ),
-        ]),
-      );
-    }
-
-    return Container(
-      padding:    const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color:        AppColors.error.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border:       Border.all(
-            color: AppColors.error.withOpacity(0.4), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-
-          // ── Rejection header ────────────────────────────────────────────
-          Row(children: [
-            Container(
-              padding:    const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color:  AppColors.error.withOpacity(0.1),
-                shape:  BoxShape.circle,
-              ),
-              child: Icon(Icons.cancel_rounded,
-                  color: AppColors.error, size: 16),
+        child: Row(
+          children: [
+            Icon(
+              Icons.check_circle_rounded,
+              color: Colors.green.shade600,
+              size: 20,
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
-                'Receipt Rejected',
+                'Receipt re-submitted! We\'ll verify it shortly.',
                 style: GoogleFonts.karla(
-                    fontSize:   14,
-                    fontWeight: FontWeight.w800,
-                    color:      AppColors.error),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green.shade700,
+                ),
               ),
             ),
-          ]),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.error.withOpacity(0.4), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Rejection header ────────────────────────────────────────────
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.cancel_rounded,
+                  color: AppColors.error,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Receipt Rejected',
+                  style: GoogleFonts.karla(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
 
           // ── Reason ──────────────────────────────────────────────────────
           if (widget.rejectionReason != null &&
               widget.rejectionReason!.trim().isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Container(
-              width:   double.infinity,
+              width: double.infinity,
               padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
-                color:        AppColors.error.withOpacity(0.06),
+                color: AppColors.error.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Text(
                 '"${widget.rejectionReason}"',
                 style: GoogleFonts.karla(
-                    fontSize:  12,
-                    color:     AppColors.error,
-                    fontStyle: FontStyle.italic,
-                    height:    1.4),
+                  fontSize: 12,
+                  color: AppColors.error,
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                ),
               ),
             ),
           ],
@@ -1866,9 +2131,10 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
           Text(
             'Please upload a clear screenshot of your GCash receipt.',
             style: GoogleFonts.karla(
-                fontSize: 12,
-                color:    AppColors.textSecondary,
-                height:   1.4),
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
           ),
 
           const SizedBox(height: AppSpacing.md),
@@ -1877,10 +2143,10 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
           GestureDetector(
             onTap: _isUploading ? null : _showSourceSheet,
             child: Container(
-              width:  double.infinity,
+              width: double.infinity,
               height: _pickedImage != null ? null : 120,
               decoration: BoxDecoration(
-                color:        AppColors.background,
+                color: AppColors.background,
                 borderRadius: BorderRadius.circular(AppRadius.md),
                 border: Border.all(
                   color: _pickedImage != null
@@ -1891,86 +2157,116 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
               ),
               child: _pickedImage != null
                   ? ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.md - 1),
-                child: Image.file(_pickedImage!,
-                    fit: BoxFit.contain, width: double.infinity),
-              )
+                      borderRadius: BorderRadius.circular(AppRadius.md - 1),
+                      child: Image.file(
+                        _pickedImage!,
+                        fit: BoxFit.contain,
+                        width: double.infinity,
+                      ),
+                    )
                   : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.upload_rounded,
-                      size: 28, color: AppColors.textMuted),
-                  const SizedBox(height: 6),
-                  Text('Tap to select new receipt',
-                      style: GoogleFonts.karla(
-                          color: AppColors.textMuted, fontSize: 12)),
-                ],
-              ),
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.upload_rounded,
+                          size: 28,
+                          color: AppColors.textMuted,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tap to select new receipt',
+                          style: GoogleFonts.karla(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ),
 
           // ── Error ────────────────────────────────────────────────────────
           if (_uploadError != null) ...[
             const SizedBox(height: AppSpacing.sm),
-            Row(children: [
-              const Icon(Icons.error_outline,
-                  color: AppColors.error, size: 14),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(_uploadError!,
+            Row(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: AppColors.error,
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _uploadError!,
                     style: GoogleFonts.karla(
-                        fontSize: 12, color: AppColors.error)),
-              ),
-            ]),
+                      fontSize: 12,
+                      color: AppColors.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
 
           const SizedBox(height: AppSpacing.md),
 
           // ── Buttons ──────────────────────────────────────────────────────
-          Row(children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _isUploading ? null : _showSourceSheet,
-                icon:  const Icon(Icons.photo_library_rounded, size: 15),
-                label: Text(
-                  _pickedImage != null ? 'Change' : 'Select',
-                  style: GoogleFonts.karla(fontWeight: FontWeight.w600),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side:  const BorderSide(color: AppColors.primary),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md)),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isUploading ? null : _showSourceSheet,
+                  icon: const Icon(Icons.photo_library_rounded, size: 15),
+                  label: Text(
+                    _pickedImage != null ? 'Change' : 'Select',
+                    style: GoogleFonts.karla(fontWeight: FontWeight.w600),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton(
-                onPressed: (_pickedImage != null && !_isUploading)
-                    ? _submitReupload : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:         AppColors.error,
-                  foregroundColor:         Colors.white,
-                  disabledBackgroundColor: AppColors.border,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: (_pickedImage != null && !_isUploading)
+                      ? _submitReupload
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: AppColors.border,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: _isUploading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          'Re-submit Receipt',
+                          style: GoogleFonts.karla(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
                 ),
-                child: _isUploading
-                    ? const SizedBox(
-                  width: 16, height: 16,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(Colors.white)),
-                )
-                    : Text('Re-submit Receipt',
-                    style: GoogleFonts.karla(
-                        fontWeight: FontWeight.w700, fontSize: 13)),
               ),
-            ),
-          ]),
+            ],
+          ),
         ],
       ),
     );
@@ -1988,13 +2284,10 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
 // bottom doesn't obscure the marker.
 
 class _RiderMapCard extends StatefulWidget {
-  final RiderLocation  riderLocation;
-  final DeliveryInfo?  deliveryInfo;
+  final RiderLocation riderLocation;
+  final DeliveryInfo? deliveryInfo;
 
-  const _RiderMapCard({
-    required this.riderLocation,
-    this.deliveryInfo,
-  });
+  const _RiderMapCard({required this.riderLocation, this.deliveryInfo});
 
   @override
   State<_RiderMapCard> createState() => _RiderMapCardState();
@@ -2002,36 +2295,53 @@ class _RiderMapCard extends StatefulWidget {
 
 class _RiderMapCardState extends State<_RiderMapCard>
     with SingleTickerProviderStateMixin {
-  late final MapController      _mapCtrl;
-  late AnimationController      _pulseCtrl;
-  late Animation<double>        _pulseAnim;
-  RiderLocation?                _prev;
+  late final MapController _mapCtrl;
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulseAnim;
+  List<LatLng> _routePoints = const [];
+  String? _routeError;
+  bool _routeLoading = false;
+  bool _mapReady = false;
+  int _routeRequestId = 0;
+  DateTime? _lastRouteRequestAt;
+  LatLng? _lastRouteOrigin;
+
+  static const _routeRefreshInterval = Duration(seconds: 30);
+  static const _routeMinimumRefreshInterval = Duration(seconds: 15);
+  static const _routeRefreshDistanceMeters = 100.0;
 
   @override
   void initState() {
     super.initState();
-    _mapCtrl  = MapController();
+    _mapCtrl = MapController();
     _pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 6.0, end: 14.0).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+    _pulseAnim = Tween<double>(
+      begin: 6.0,
+      end: 14.0,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+    _refreshRoute(force: true);
   }
 
   @override
   void didUpdateWidget(_RiderMapCard old) {
     super.didUpdateWidget(old);
-    // Smooth-pan the map whenever the rider moves
-    if (widget.riderLocation.latitude  != old.riderLocation.latitude ||
-        widget.riderLocation.longitude != old.riderLocation.longitude) {
-      _mapCtrl.move(
-        LatLng(widget.riderLocation.latitude, widget.riderLocation.longitude),
-        _mapCtrl.camera.zoom,
-      );
+    final riderMoved =
+        widget.riderLocation.latitude != old.riderLocation.latitude ||
+        widget.riderLocation.longitude != old.riderLocation.longitude;
+    final destinationChanged =
+        widget.deliveryInfo?.destinationLatitude !=
+            old.deliveryInfo?.destinationLatitude ||
+        widget.deliveryInfo?.destinationLongitude !=
+            old.deliveryInfo?.destinationLongitude;
+    if (destinationChanged) {
+      _refreshRoute(force: true);
+    } else if (riderMoved) {
+      _refreshRoute();
     }
-    _prev = old.riderLocation;
+    _fitMap();
   }
 
   @override
@@ -2044,6 +2354,7 @@ class _RiderMapCardState extends State<_RiderMapCard>
   Widget build(BuildContext context) {
     final rider = widget.riderLocation;
     final riderLatLng = LatLng(rider.latitude, rider.longitude);
+    final destinationLatLng = _destinationLatLng;
 
     // Freshness: dim marker if position is > 60 s old
     final age = rider.updatedAt != null
@@ -2055,10 +2366,7 @@ class _RiderMapCardState extends State<_RiderMapCard>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadius.xl),
         boxShadow: AppShadows.card,
-        border: Border.all(
-          color: AppColors.gold.withOpacity(0.25),
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.gold.withOpacity(0.25), width: 1),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -2071,29 +2379,60 @@ class _RiderMapCardState extends State<_RiderMapCard>
               mapController: _mapCtrl,
               options: MapOptions(
                 initialCenter: riderLatLng,
-                initialZoom:   16.0,
+                initialZoom: 16.0,
+                onMapReady: () {
+                  _mapReady = true;
+                  _fitMap();
+                },
                 interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.pinchZoom |
-                  InteractiveFlag.doubleTapZoom |
-                  InteractiveFlag.drag,
+                  flags:
+                      InteractiveFlag.pinchZoom |
+                      InteractiveFlag.doubleTapZoom |
+                      InteractiveFlag.drag,
                 ),
               ),
               children: [
                 // OSM tiles
                 TileLayer(
-                  urlTemplate:
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.example.bingnondo_app',
                   maxZoom: 19,
                 ),
 
+                if (_routePoints.length > 1)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _routePoints,
+                        color: AppColors.gold,
+                        strokeWidth: 5,
+                        borderColor: Colors.white,
+                        borderStrokeWidth: 1.5,
+                      ),
+                    ],
+                  ),
+
                 // Markers layer
                 MarkerLayer(
                   markers: [
+                    if (destinationLatLng != null)
+                      Marker(
+                        point: destinationLatLng,
+                        width: 44,
+                        height: 48,
+                        child: const Tooltip(
+                          message: 'Your delivery pin',
+                          child: Icon(
+                            Icons.location_pin,
+                            color: AppColors.error,
+                            size: 42,
+                          ),
+                        ),
+                      ),
                     // Rider marker — pulsing gold dot
                     Marker(
-                      point:  riderLatLng,
-                      width:  48,
+                      point: riderLatLng,
+                      width: 48,
                       height: 48,
                       child: AnimatedBuilder(
                         animation: _pulseAnim,
@@ -2102,12 +2441,13 @@ class _RiderMapCardState extends State<_RiderMapCard>
                           children: [
                             // Outer pulse ring
                             Container(
-                              width:  _pulseAnim.value * 2,
+                              width: _pulseAnim.value * 2,
                               height: _pulseAnim.value * 2,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: AppColors.gold
-                                    .withOpacity(isStale ? 0.08 : 0.22),
+                                color: AppColors.gold.withOpacity(
+                                  isStale ? 0.08 : 0.22,
+                                ),
                               ),
                             ),
                             // Inner dot
@@ -2120,7 +2460,9 @@ class _RiderMapCardState extends State<_RiderMapCard>
                                     ? AppColors.textMuted
                                     : AppColors.gold,
                                 border: Border.all(
-                                    color: Colors.white, width: 2.5),
+                                  color: Colors.white,
+                                  width: 2.5,
+                                ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: AppColors.gold.withOpacity(0.5),
@@ -2129,8 +2471,10 @@ class _RiderMapCardState extends State<_RiderMapCard>
                                 ],
                               ),
                               child: const Center(
-                                child: Text('🛵',
-                                    style: TextStyle(fontSize: 9)),
+                                child: Text(
+                                  '🛵',
+                                  style: TextStyle(fontSize: 9),
+                                ),
                               ),
                             ),
                           ],
@@ -2153,10 +2497,10 @@ class _RiderMapCardState extends State<_RiderMapCard>
           // ── Info strip ─────────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
-            decoration: const BoxDecoration(
-              color: AppColors.primaryDark,
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm + 2,
             ),
+            decoration: const BoxDecoration(color: AppColors.primaryDark),
             child: Row(
               children: [
                 // Rider icon
@@ -2167,7 +2511,9 @@ class _RiderMapCardState extends State<_RiderMapCard>
                     shape: BoxShape.circle,
                     color: AppColors.gold.withOpacity(0.15),
                     border: Border.all(
-                        color: AppColors.gold.withOpacity(0.4), width: 1),
+                      color: AppColors.gold.withOpacity(0.4),
+                      width: 1,
+                    ),
                   ),
                   child: const Center(
                     child: Text('🛵', style: TextStyle(fontSize: 16)),
@@ -2199,6 +2545,17 @@ class _RiderMapCardState extends State<_RiderMapCard>
                           color: isStale
                               ? AppColors.error.withOpacity(0.8)
                               : AppColors.gold.withOpacity(0.75),
+                        ),
+                      ),
+                      Text(
+                        _routeStatus(destinationLatLng),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.karla(
+                          fontSize: 10,
+                          color: _routeError != null
+                              ? AppColors.error.withOpacity(0.9)
+                              : AppColors.textOnDark.withOpacity(0.7),
                         ),
                       ),
                     ],
@@ -2236,5 +2593,111 @@ class _RiderMapCardState extends State<_RiderMapCard>
     if (age.inSeconds < 10) return 'just now';
     if (age.inSeconds < 60) return '${age.inSeconds}s ago';
     return '${age.inMinutes}m ago';
+  }
+
+  LatLng? get _destinationLatLng {
+    final latitude = widget.deliveryInfo?.destinationLatitude;
+    final longitude = widget.deliveryInfo?.destinationLongitude;
+    if (latitude == null ||
+        longitude == null ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      return null;
+    }
+    return LatLng(latitude, longitude);
+  }
+
+  String _routeStatus(LatLng? destination) {
+    if (destination == null) return 'Delivery pin unavailable';
+    if (_routeLoading) return 'Finding route to your pin…';
+    if (_routeError != null) return _routeError!;
+    return _routePoints.isNotEmpty
+        ? 'Road route to your pin'
+        : 'Route unavailable';
+  }
+
+  Future<void> _refreshRoute({bool force = false}) async {
+    final destination = _destinationLatLng;
+    if (destination == null) {
+      _routeRequestId++;
+      setState(() {
+        _routePoints = const [];
+        _routeError = null;
+        _routeLoading = false;
+      });
+      _fitMap();
+      return;
+    }
+
+    final origin = LatLng(
+      widget.riderLocation.latitude,
+      widget.riderLocation.longitude,
+    );
+    final lastRequestAt = _lastRouteRequestAt;
+    final lastOrigin = _lastRouteOrigin;
+    final hasMovedEnough =
+        lastOrigin != null &&
+        const Distance().as(LengthUnit.Meter, lastOrigin, origin) >=
+            _routeRefreshDistanceMeters;
+    final intervalElapsed =
+        lastRequestAt == null ||
+        DateTime.now().difference(lastRequestAt) >= _routeRefreshInterval;
+    final minimumIntervalElapsed =
+        lastRequestAt == null ||
+        DateTime.now().difference(lastRequestAt) >=
+            _routeMinimumRefreshInterval;
+    if (!force &&
+        (_routeLoading ||
+            !minimumIntervalElapsed ||
+            (!hasMovedEnough && !intervalElapsed))) {
+      return;
+    }
+
+    final requestId = ++_routeRequestId;
+    _lastRouteOrigin = origin;
+    _lastRouteRequestAt = DateTime.now();
+    setState(() {
+      _routeLoading = true;
+      _routeError = null;
+    });
+    try {
+      final route = await TrackingService.instance.fetchDrivingRoute(
+        origin: origin,
+        destination: destination,
+      );
+      if (!mounted || requestId != _routeRequestId) return;
+      setState(() {
+        _routePoints = route;
+        _routeLoading = false;
+      });
+      _fitMap();
+    } on TrackingApiException catch (error) {
+      if (!mounted || requestId != _routeRequestId) return;
+      setState(() {
+        _routePoints = const [];
+        _routeError = error.message;
+        _routeLoading = false;
+      });
+      _fitMap();
+    }
+  }
+
+  void _fitMap() {
+    if (!_mapReady) return;
+    final destination = _destinationLatLng;
+    final points = <LatLng>[
+      LatLng(widget.riderLocation.latitude, widget.riderLocation.longitude),
+      if (destination case final point?) point,
+      ..._routePoints,
+    ];
+    if (points.length < 2) return;
+    _mapCtrl.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: const EdgeInsets.all(36),
+      ),
+    );
   }
 }

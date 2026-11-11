@@ -3,7 +3,7 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 const String _kDefaultBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:3000',
+    defaultValue: 'https://bingnondobackend-production.up.railway.app',
 );
 
 typedef MenuUpdateCallback      = void Function(Map<String, dynamic>);

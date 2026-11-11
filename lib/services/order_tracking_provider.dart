@@ -265,23 +265,31 @@ class OrderTrackingProvider extends ChangeNotifier {
   // ── Mock timeline builder ─────────────────────────────────────────────────
 
   OrderTimeline _buildMockTimeline(OrderDetail order) {
+    final deliveryPreference = order.delivery?.preference ?? 'own_delivery';
+    final isPickup = deliveryPreference == 'pickup';
     final allStatuses = [
       ('pending',          'Order Placed'),
       ('confirmed',        'Order Confirmed'),
       ('preparing',        'Being Prepared'),
-      ('ready',            'Ready for Pickup / Delivery'),
-      ('out_for_delivery', 'Out for Delivery'),
-      ('completed',        'Delivered'),
+      ('ready',            isPickup ? 'Ready for Pickup' : 'Ready'),
+      if (!isPickup) ('out_for_delivery', 'Out for Delivery'),
+      ('completed',        isPickup ? 'Picked Up' : 'Delivered'),
     ];
 
-    final currentIdx = order.status.timelineIndex;
+    final currentStatus = order.status == OrderStatus.completed
+        ? 'completed'
+        : order.status.name.replaceAllMapped(
+            RegExp(r'[A-Z]'),
+            (match) => '_${match.group(0)!.toLowerCase()}',
+          );
+    final currentIdx = allStatuses.indexWhere((step) => step.$1 == currentStatus);
     final now        = DateTime.now();
 
     final steps = allStatuses.asMap().entries.map((e) {
       final idx         = e.key;
       final statusKey   = e.value.$1;
       final statusLabel = e.value.$2;
-      final isCompleted = idx <= currentIdx;
+      final isCompleted = currentIdx >= 0 && idx <= currentIdx;
       final isCurrent   = idx == currentIdx;
 
       return TimelineStep(
@@ -300,6 +308,7 @@ class OrderTrackingProvider extends ChangeNotifier {
         orderId:       order.id,
         orderNumber:   order.orderNumber,
         currentStatus: 'cancelled',
+        deliveryPreference: deliveryPreference,
         steps: [
           TimelineStep(
             status:      'pending',
@@ -323,6 +332,7 @@ class OrderTrackingProvider extends ChangeNotifier {
       orderId:       order.id,
       orderNumber:   order.orderNumber,
       currentStatus: order.status.toString().split('.').last,
+      deliveryPreference: deliveryPreference,
       steps:         steps,
     );
   }

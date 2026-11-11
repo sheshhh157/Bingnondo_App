@@ -324,6 +324,12 @@ class _PaymentSelectionStepState extends State<_PaymentSelectionStep> {
     required PaymentMethod method,
     required VoidCallback onConfirmed,
   }) async {
+    if (!cart.ridersAvailable) {
+      cart.setPaymentMethod(method);
+      onConfirmed();
+      return;
+    }
+
     final address = cart.deliveryAddress!.address;
     final methodLabel = method == PaymentMethod.gcash ? 'GCash' : 'Cash on Delivery';
 
@@ -526,8 +532,10 @@ class _PaymentSelectionStepState extends State<_PaymentSelectionStep> {
 
   @override
   Widget build(BuildContext context) {
-    final hasAddress = cart.deliveryAddress != null &&
-        !cart.deliveryAddress!.isEmpty;
+    // Kapag walang rider (pickup only), hindi na required ang delivery address —
+    // ang checkout ay proceed nang walang address field.
+    final hasAddress = !cart.ridersAvailable ||
+        (cart.deliveryAddress != null && !cart.deliveryAddress!.isEmpty);
 
     return Column(children: [
       Expanded(
@@ -538,7 +546,8 @@ class _PaymentSelectionStepState extends State<_PaymentSelectionStep> {
             children: [
 
               // ── Deliver to ────────────────────────────────────────────────
-              if (cart.profile != null) ...[
+              // Itago kung walang rider — pickup lang, hindi na kailangan ng address.
+              if (cart.profile != null && cart.ridersAvailable) ...[
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -574,6 +583,12 @@ class _PaymentSelectionStepState extends State<_PaymentSelectionStep> {
               // ── Error banner ──────────────────────────────────────────────
               if (cart.error != CartError.none) ...[
                 _ErrorBanner(message: cart.errorMessage ?? 'Something went wrong.'),
+                const SizedBox(height: AppSpacing.md),
+              ],
+
+              // ── Pickup-only notice (walang rider online) ──────────────────
+              if (!cart.ridersAvailable) ...[
+                const _PickupOnlyBanner(),
                 const SizedBox(height: AppSpacing.md),
               ],
 
@@ -1528,29 +1543,30 @@ class _CodDetailStep extends StatelessWidget {
                                 color:      AppColors.textPrimary)),
                       ],
                     ),
-                    const SizedBox(height: 6),
-
-                    // ── Delivery fee row ──────────────────────────────────
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(children: [
-                          const Icon(Icons.delivery_dining_rounded,
-                              size: 14, color: AppColors.textMuted),
-                          const SizedBox(width: 4),
-                          Text('Delivery Fee',
+                    if (cart.ridersAvailable) ...[
+                      const SizedBox(height: 6),
+                      // ── Delivery fee row ────────────────────────────────
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(children: [
+                            const Icon(Icons.delivery_dining_rounded,
+                                size: 14, color: AppColors.textMuted),
+                            const SizedBox(width: 4),
+                            Text('Delivery Fee',
+                                style: GoogleFonts.karla(
+                                    fontSize: 13,
+                                    color:    AppColors.textSecondary)),
+                          ]),
+                          Text('₱${cart.deliveryFee.toStringAsFixed(2)}',
                               style: GoogleFonts.karla(
-                                  fontSize: 13,
-                                  color:    AppColors.textSecondary)),
-                        ]),
-                        Text('₱${cart.deliveryFee.toStringAsFixed(2)}',
-                            style: GoogleFonts.karla(
-                                fontSize:   13,
-                                fontWeight: FontWeight.w600,
-                                color:      AppColors.textPrimary)),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
+                                  fontSize:   13,
+                                  fontWeight: FontWeight.w600,
+                                  color:      AppColors.textPrimary)),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                    ],
                     const Divider(color: AppColors.border, height: 1),
                     const SizedBox(height: AppSpacing.sm),
 
@@ -2067,7 +2083,8 @@ class _ConfirmationStep extends StatelessWidget {
                 label: 'Payment',
                 value: isGcash ? 'GCash' : 'Cash on Delivery',
               ),
-              if ((cart.deliveryAddress?.address.isNotEmpty ?? false)) ...[
+              if (cart.ridersAvailable &&
+                  (cart.deliveryAddress?.address.isNotEmpty ?? false)) ...[
                 const SizedBox(height: AppSpacing.sm),
                 _ConfirmRow(
                   label: 'Deliver to',
@@ -2098,13 +2115,15 @@ class _ConfirmationStep extends StatelessWidget {
                 label: 'Subtotal',
                 value: '₱${order.subtotal.toStringAsFixed(2)}',
               ),
-              const SizedBox(height: AppSpacing.sm),
-              _ConfirmRow(
-                label: '🛵  Delivery Fee',
-                value: order.deliveryFee > 0
-                    ? '₱${order.deliveryFee.toStringAsFixed(2)}'
-                    : 'Free',
-              ),
+              if (cart.ridersAvailable) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _ConfirmRow(
+                  label: '🛵  Delivery Fee',
+                  value: order.deliveryFee > 0
+                      ? '₱${order.deliveryFee.toStringAsFixed(2)}'
+                      : 'Free',
+                ),
+              ],
               const SizedBox(height: AppSpacing.md),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -2294,23 +2313,25 @@ class _CheckoutBottomBar extends StatelessWidget {
                       fontSize: 12, color: AppColors.textSecondary)),
             ],
           ),
-          const SizedBox(height: 2),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(children: [
-                const Icon(Icons.delivery_dining_rounded,
-                    size: 12, color: AppColors.textMuted),
-                const SizedBox(width: 3),
-                Text('Delivery Fee',
+          if (cart.ridersAvailable) ...[
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(children: [
+                  const Icon(Icons.delivery_dining_rounded,
+                      size: 12, color: AppColors.textMuted),
+                  const SizedBox(width: 3),
+                  Text('Delivery Fee',
+                      style: GoogleFonts.karla(
+                          fontSize: 12, color: AppColors.textMuted)),
+                ]),
+                Text('₱${cart.deliveryFee.toStringAsFixed(2)}',
                     style: GoogleFonts.karla(
-                        fontSize: 12, color: AppColors.textMuted)),
-              ]),
-              Text('₱${cart.deliveryFee.toStringAsFixed(2)}',
-                  style: GoogleFonts.karla(
-                      fontSize: 12, color: AppColors.textSecondary)),
-            ],
-          ),
+                        fontSize: 12, color: AppColors.textSecondary)),
+              ],
+            ),
+          ],
           const SizedBox(height: 6),
           const Divider(color: AppColors.border, height: 1),
           const SizedBox(height: 6),
@@ -2467,6 +2488,69 @@ class _CodRestrictedBanner extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ── Pickup-Only Banner ────────────────────────────────────────────────────────
+/// Shown at the top of the checkout screen when no riders are currently online.
+/// Informs the customer that only pickup is available today.
+class _PickupOnlyBanner extends StatelessWidget {
+  const _PickupOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm + 2,
+      ),
+      decoration: BoxDecoration(
+        // Warm amber tone — noticeable pero hindi alarming (hindi pula)
+        color: const Color(0xFFFFF3CD),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: const Color(0xFFFFCA28), width: 1.2),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: Icon(
+              Icons.store_mall_directory_rounded,
+              size: 18,
+              color: Color(0xFFF57C00),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pickup Only — Walang Available na Rider',
+                  style: GoogleFonts.karla(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF7B4F00),
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Hindi available ang delivery ngayon. '
+                  'I-pick up ang iyong order sa Bingnondo Cafe.',
+                  style: GoogleFonts.karla(
+                    fontSize: 11.5,
+                    color: const Color(0xFF7B4F00),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2642,25 +2726,26 @@ class _OrderSummaryCardState extends State<_OrderSummaryCard> {
                       fontSize: 12, color: AppColors.textPrimary)),
             ],
           ),
-          const SizedBox(height: 4),
-
-          // ── Delivery Fee ──────────────────────────────────────────────────
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(children: [
-                const Icon(Icons.delivery_dining_rounded,
-                    size: 12, color: AppColors.textMuted),
-                const SizedBox(width: 3),
-                Text('Delivery Fee',
+          if (widget.cart.ridersAvailable) ...[
+            const SizedBox(height: 4),
+            // ── Delivery Fee ────────────────────────────────────────────────
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(children: [
+                  const Icon(Icons.delivery_dining_rounded,
+                      size: 12, color: AppColors.textMuted),
+                  const SizedBox(width: 3),
+                  Text('Delivery Fee',
+                      style: GoogleFonts.karla(
+                          fontSize: 12, color: AppColors.textSecondary)),
+                ]),
+                Text('₱${widget.cart.deliveryFee.toStringAsFixed(2)}',
                     style: GoogleFonts.karla(
-                        fontSize: 12, color: AppColors.textSecondary)),
-              ]),
-              Text('₱${widget.cart.deliveryFee.toStringAsFixed(2)}',
-                  style: GoogleFonts.karla(
-                      fontSize: 12, color: AppColors.textPrimary)),
-            ],
-          ),
+                        fontSize: 12, color: AppColors.textPrimary)),
+              ],
+            ),
+          ],
           const SizedBox(height: 6),
           const Divider(color: AppColors.border),
 

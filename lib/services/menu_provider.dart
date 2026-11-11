@@ -22,6 +22,9 @@ class MenuProvider extends ChangeNotifier {
   List<MenuItem> itemsForCategory(int categoryId) =>
       _data?.itemsForCategory(categoryId) ?? [];
 
+  List<MenuItem> searchItems(String query) =>
+      _data?.searchItems(query) ?? [];
+
   MenuProvider() {
     SocketService.instance.onMenuUpdate = _handleMenuUpdate;
   }

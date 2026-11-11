@@ -17,10 +17,7 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen>
-    with TickerProviderStateMixin {
-
-  // ─── Tab ────────────────────────────────────────────────────────────────
-  late final TabController _tabController;
+    with SingleTickerProviderStateMixin {
 
   // ─── Email form ──────────────────────────────────────────────────────────
   final _emailFormKey       = GlobalKey<FormState>();
@@ -30,15 +27,6 @@ class _SignUpScreenState extends State<SignUpScreen>
   final _emailFocus         = FocusNode();
   final _passwordFocus      = FocusNode();
   final _confirmFocus       = FocusNode();
-
-  // ─── Mobile form ─────────────────────────────────────────────────────────
-  final _mobileFormKey         = GlobalKey<FormState>();
-  final _mobileController      = TextEditingController();
-  final _mobilePassController  = TextEditingController();
-  final _mobileConfirmController = TextEditingController();
-  final _mobileFocus           = FocusNode();
-  final _mobilePassFocus       = FocusNode();
-  final _mobileConfirmFocus    = FocusNode();
 
   bool _isLoading     = false;
   String? _errorMessage;
@@ -51,11 +39,6 @@ class _SignUpScreenState extends State<SignUpScreen>
   @override
   void initState() {
     super.initState();
-
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      if (_errorMessage != null) setState(() => _errorMessage = null);
-    });
 
     _animController = AnimationController(
       vsync: this,
@@ -72,7 +55,6 @@ class _SignUpScreenState extends State<SignUpScreen>
 
   @override
   void dispose() {
-    _tabController.dispose();
     _animController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -80,24 +62,7 @@ class _SignUpScreenState extends State<SignUpScreen>
     _emailFocus.dispose();
     _passwordFocus.dispose();
     _confirmFocus.dispose();
-    _mobileController.dispose();
-    _mobilePassController.dispose();
-    _mobileConfirmController.dispose();
-    _mobileFocus.dispose();
-    _mobilePassFocus.dispose();
-    _mobileConfirmFocus.dispose();
     super.dispose();
-  }
-
-  // ─── Validate PH mobile ──────────────────────────────────────────────────
-
-  String? _validateMobile(String? v) {
-    if (v == null || v.trim().isEmpty) return 'Mobile number is required.';
-    final digits = v.trim().replaceAll(RegExp(r'\D'), '');
-    if (!RegExp(r'^09\d{9}$').hasMatch(digits)) {
-      return 'Enter a valid PH number (09XXXXXXXXX).';
-    }
-    return null;
   }
 
   // ─── Submit: Email ───────────────────────────────────────────────────────
@@ -126,7 +91,7 @@ class _SignUpScreenState extends State<SignUpScreen>
         context,
         PageRouteBuilder(
           pageBuilder: (_, anim, __) =>
-              OtpScreen(contact: email, isMobile: false),
+              OtpScreen(contact: email),
           transitionsBuilder: (_, anim, __, child) => SlideTransition(
             position: Tween<Offset>(
               begin: const Offset(1, 0),
@@ -141,56 +106,6 @@ class _SignUpScreenState extends State<SignUpScreen>
       if (!mounted) return;
       setState(() => _errorMessage =
           e.isConflict ? 'This email is already registered. Sign in instead.' : e.message);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _errorMessage = 'Something went wrong. Please try again.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  // ─── Submit: Mobile ──────────────────────────────────────────────────────
-
-  Future<void> _handleMobileSignUp() async {
-    if (!_mobileFormKey.currentState!.validate()) return;
-
-    if (!_termsAccepted) {
-      setState(() => _errorMessage = 'Please agree to our Terms and Privacy Policy to continue.');
-      return;
-    }
-
-    FocusScope.of(context).unfocus();
-    setState(() { _isLoading = true; _errorMessage = null; });
-
-    try {
-      final mobile = _mobileController.text.trim();
-      await context.read<AuthProvider>().registerMobile(
-        mobileNumber: mobile,
-        password: _mobilePassController.text,
-      );
-
-      if (!mounted) return;
-
-      Navigator.push(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, anim, __) =>
-              OtpScreen(contact: mobile, isMobile: true),
-          transitionsBuilder: (_, anim, __, child) => SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1, 0),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
-            child: child,
-          ),
-          transitionDuration: const Duration(milliseconds: 350),
-        ),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _errorMessage = e.isConflict
-          ? 'This mobile number is already registered. Sign in instead.'
-          : e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _errorMessage = 'Something went wrong. Please try again.');
@@ -248,22 +163,7 @@ class _SignUpScreenState extends State<SignUpScreen>
       children: [
         Expanded(child: _buildBrandPanel(context)),
         Expanded(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  0,
-                ),
-                child: _buildTabBar(isDarkBackground: false),
-              ),
-              Expanded(
-                child: _buildFormPanel(context, isCompact, isWide: true),
-              ),
-            ],
-          ),
+          child: _buildFormPanel(context, isCompact, isWide: true),
         ),
       ],
     );
@@ -328,7 +228,7 @@ class _SignUpScreenState extends State<SignUpScreen>
         AppSpacing.lg,
         isCompact ? AppSpacing.md : AppSpacing.xl,
         AppSpacing.lg,
-        0, // tabs sit at the bottom of this header — no extra bottom padding
+        AppSpacing.md,
       ),
       color: AppColors.primaryDark,
       child: Column(
@@ -357,70 +257,6 @@ class _SignUpScreenState extends State<SignUpScreen>
               ),
             ],
           ),
-
-          // ── Email / Mobile tab bar ───────────────────────────────────────
-          const SizedBox(height: AppSpacing.md),
-          _buildTabBar(isDarkBackground: true),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabBar({bool isDarkBackground = true}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: isDarkBackground
-            ? Colors.black.withOpacity(0.2)
-            : AppColors.card,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(
-          color: isDarkBackground
-              ? AppColors.gold.withOpacity(0.3)
-              : AppColors.border,
-        ),
-      ),
-      child: TabBar(
-        controller: _tabController,
-        indicator: BoxDecoration(
-          color: AppColors.gold,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        dividerColor: Colors.transparent,
-        labelColor: AppColors.primaryDark,
-        unselectedLabelColor: isDarkBackground
-            ? AppColors.textOnDark.withOpacity(0.7)
-            : AppColors.textSecondary,
-        labelStyle: GoogleFonts.karla(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-        ),
-        unselectedLabelStyle: GoogleFonts.karla(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-        tabs: const [
-          Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.mail_outline_rounded, size: 16),
-                SizedBox(width: 6),
-                Text('Email'),
-              ],
-            ),
-          ),
-          Tab(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.phone_android_rounded, size: 16),
-                SizedBox(width: 6),
-                Text('Mobile'),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -447,17 +283,15 @@ class _SignUpScreenState extends State<SignUpScreen>
     );
   }
 
-  // ─── Form panel (TabBarView) ─────────────────────────────────────────────
+  // ─── Form panel ──────────────────────────────────────────────────────────
 
   Widget _buildFormPanel(BuildContext context, bool isCompact, {bool isWide = false}) {
     return Container(
       color: AppColors.background,
-      child: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildEmailForm(context, isCompact, isWide: isWide),
-          _buildMobileForm(context, isCompact, isWide: isWide),
-        ],
+      child: _buildEmailForm(
+        context,
+        isCompact,
+        isWide: isWide,
       ),
     );
   }
@@ -492,7 +326,7 @@ class _SignUpScreenState extends State<SignUpScreen>
 
             SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.xl),
 
-            if (_errorMessage != null && _tabController.index == 0) ...[
+            if (_errorMessage != null) ...[
               StatusBanner(message: _errorMessage!, isError: true),
               const SizedBox(height: AppSpacing.md),
             ],
@@ -569,120 +403,6 @@ class _SignUpScreenState extends State<SignUpScreen>
 
             SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
             _buildInfoNote(context, 'Just email and password to start. We\'ll ask for your name and address only when you\'re ready to place your first order.'),
-            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-            const ChineseDivider(),
-            const SizedBox(height: AppSpacing.md),
-            _buildLoginPrompt(context),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─── Mobile Form ─────────────────────────────────────────────────────────
-
-  Widget _buildMobileForm(BuildContext context, bool isCompact, {bool isWide = false}) {
-    return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        isCompact ? AppSpacing.lg : (isWide ? AppSpacing.xxl : AppSpacing.xl),
-        AppSpacing.lg,
-        AppSpacing.xxl,
-      ),
-      child: Form(
-        key: _mobileFormKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isWide) ...[
-              BrandCatIcon(size: 48),
-              const SizedBox(height: AppSpacing.md),
-            ],
-
-            Text('New here?', style: AppTextStyles.display2(context)),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'Enter your PH mobile number to get started.',
-              style: AppTextStyles.bodyMedium(context),
-            ),
-
-            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.xl),
-
-            if (_errorMessage != null && _tabController.index == 1) ...[
-              StatusBanner(message: _errorMessage!, isError: true),
-              const SizedBox(height: AppSpacing.md),
-            ],
-
-            AppTextField(
-              label: 'Mobile Number',
-              hint: '09XXXXXXXXX',
-              controller: _mobileController,
-              keyboardType: TextInputType.phone,
-              focusNode: _mobileFocus,
-              textInputAction: TextInputAction.next,
-              prefixIcon: const Icon(Icons.phone_android_rounded, size: 20, color: AppColors.gold),
-              extraFormatters: [FilteringTextInputFormatter.digitsOnly],
-              maxLength: 11,
-              validator: _validateMobile,
-              onChanged: (_) {
-                if (_errorMessage != null) setState(() => _errorMessage = null);
-              },
-            ),
-
-            const SizedBox(height: AppSpacing.md),
-
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _mobilePassController,
-              builder: (_, val, __) => Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppTextField(
-                    label: 'Password',
-                    controller: _mobilePassController,
-                    isPassword: true,
-                    focusNode: _mobilePassFocus,
-                    textInputAction: TextInputAction.next,
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
-                    validator: validatePassword,
-                    autovalidateMode: AutovalidateMode.disabled,
-                    onChanged: (_) {
-                      if (_errorMessage != null) setState(() => _errorMessage = null);
-                    },
-                  ),
-                  PasswordChecklist(password: val.text),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppSpacing.md),
-
-            AppTextField(
-              label: 'Confirm Password',
-              controller: _mobileConfirmController,
-              isPassword: true,
-              focusNode: _mobileConfirmFocus,
-              textInputAction: TextInputAction.done,
-              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppColors.gold),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Please confirm your password.';
-                if (v != _mobilePassController.text) return 'Passwords do not match.';
-                return null;
-              },
-            ),
-
-            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-            _buildTermsCheckbox(context),
-            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-
-            PrimaryButton(
-              label: 'CREATE ACCOUNT',
-              onPressed: _handleMobileSignUp,
-              isLoading: _isLoading,
-            ),
-
-            SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
-            _buildInfoNote(context, 'OTP will be sent to your mobile number via SMS. Standard SMS rates may apply.'),
             SizedBox(height: isCompact ? AppSpacing.md : AppSpacing.lg),
             const ChineseDivider(),
             const SizedBox(height: AppSpacing.md),

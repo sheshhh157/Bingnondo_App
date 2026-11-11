@@ -106,7 +106,7 @@ extension RestrictionLevelX on RestrictionLevel {
 
 class CustomerProfile {
   final int id;
-  final String email;
+  final String? email;
   final bool profileCompleted;
   final String? firstName;
   final String? lastName;
@@ -134,7 +134,7 @@ class CustomerProfile {
     final lng = json['longitude'];
     return CustomerProfile(
       id:               json['id'] as int,
-      email:            json['email'] as String,
+      email:            json['email'] as String?,
       profileCompleted: json['profile_completed'] as bool? ?? false,
       firstName:        json['first_name'] as String?,
       lastName:         json['last_name'] as String?,
@@ -149,9 +149,15 @@ class CustomerProfile {
   }
 
   String get displayName {
-    if (firstName != null && lastName != null) return '$firstName $lastName';
-    if (firstName != null) return firstName!;
-    return email;
+    final first = firstName?.trim();
+    final last = lastName?.trim();
+    if (first != null && first.isNotEmpty && last != null && last.isNotEmpty) {
+      return '$first $last';
+    }
+    if (first != null && first.isNotEmpty) return first;
+    final contactEmail = email?.trim();
+    if (contactEmail != null && contactEmail.isNotEmpty) return contactEmail;
+    return mobileNumber ?? 'Customer';
   }
 }
 
@@ -171,6 +177,9 @@ class PlaceOrderRequest {
   final double?        deliveryLongitude;
   // Delivery fee snapshot
   final double?        deliveryFee;
+  // 'own_delivery' (default) or 'pickup' (when no riders are online).
+  // CartProvider sets this automatically based on ridersAvailable.
+  final String         deliveryPreference;
 
   const PlaceOrderRequest({
     required this.items,
@@ -183,12 +192,13 @@ class PlaceOrderRequest {
     this.deliveryLatitude,
     this.deliveryLongitude,
     this.deliveryFee,
+    this.deliveryPreference = 'own_delivery',   // ← default unchanged
   });
 
   Map<String, dynamic> toJson() => {
     'order_type':          'online',
     'order_channel':       'mobile_app',
-    'delivery_preference': 'own_delivery',
+    'delivery_preference': deliveryPreference,  // ← was hardcoded 'own_delivery'
     'payment_method':      paymentMethod.apiValue,
     'items':               items.map((i) => i.toOrderJson()).toList(),
     if (orderNotes != null && orderNotes!.isNotEmpty)

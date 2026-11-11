@@ -233,6 +233,22 @@ class MenuData {
 
   List<MenuItem> itemsForCategory(int categoryId) =>
       items.where((i) => i.categoryId == categoryId).toList();
+
+  List<MenuItem> searchItems(String query) {
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) return items;
+
+    final categoryNames = {
+      for (final category in categories)
+        category.id: category.name.toLowerCase(),
+    };
+
+    return items.where((item) {
+      return item.name.toLowerCase().contains(normalizedQuery) ||
+          (item.description?.toLowerCase().contains(normalizedQuery) ?? false) ||
+          (categoryNames[item.categoryId]?.contains(normalizedQuery) ?? false);
+    }).toList();
+  }
 }
 
 // ─── Chatbot Models ────────────────────────────────────────────────────────────

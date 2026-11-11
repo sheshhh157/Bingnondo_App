@@ -13,25 +13,45 @@ enum OrderStatus {
 extension OrderStatusX on OrderStatus {
   static OrderStatus fromString(String v) {
     switch (v) {
-      case 'confirmed':       return OrderStatus.confirmed;
-      case 'preparing':       return OrderStatus.preparing;
-      case 'ready':           return OrderStatus.ready;
-      case 'out_for_delivery':return OrderStatus.outForDelivery;
-      case 'completed':       return OrderStatus.completed;
-      case 'cancelled':       return OrderStatus.cancelled;
-      default:                return OrderStatus.pending;
+      case 'confirmed':
+        return OrderStatus.confirmed;
+      case 'preparing':
+        return OrderStatus.preparing;
+      case 'ready':
+        return OrderStatus.ready;
+      case 'ready_for_pickup':
+        return OrderStatus.ready;
+      case 'out_for_delivery':
+        return OrderStatus.outForDelivery;
+      case 'picked_up':
+        return OrderStatus.completed;
+      case 'delivered':
+        return OrderStatus.completed;
+      case 'completed':
+        return OrderStatus.completed;
+      case 'cancelled':
+        return OrderStatus.cancelled;
+      default:
+        return OrderStatus.pending;
     }
   }
 
   String get label {
     switch (this) {
-      case OrderStatus.pending:        return 'Pending';
-      case OrderStatus.confirmed:      return 'Confirmed';
-      case OrderStatus.preparing:      return 'Preparing';
-      case OrderStatus.ready:          return 'Ready';
-      case OrderStatus.outForDelivery: return 'Out for Delivery';
-      case OrderStatus.completed:      return 'Completed';
-      case OrderStatus.cancelled:      return 'Cancelled';
+      case OrderStatus.pending:
+        return 'Pending';
+      case OrderStatus.confirmed:
+        return 'Confirmed';
+      case OrderStatus.preparing:
+        return 'Preparing';
+      case OrderStatus.ready:
+        return 'Ready';
+      case OrderStatus.outForDelivery:
+        return 'Out for Delivery';
+      case OrderStatus.completed:
+        return 'Completed';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
     }
   }
 
@@ -56,13 +76,20 @@ extension OrderStatusX on OrderStatus {
 
   int get timelineIndex {
     switch (this) {
-      case OrderStatus.pending:        return 0;
-      case OrderStatus.confirmed:      return 1;
-      case OrderStatus.preparing:      return 2;
-      case OrderStatus.ready:          return 3;
-      case OrderStatus.outForDelivery: return 4;
-      case OrderStatus.completed:      return 5;
-      case OrderStatus.cancelled:      return -1;
+      case OrderStatus.pending:
+        return 0;
+      case OrderStatus.confirmed:
+        return 1;
+      case OrderStatus.preparing:
+        return 2;
+      case OrderStatus.ready:
+        return 3;
+      case OrderStatus.outForDelivery:
+        return 4;
+      case OrderStatus.completed:
+        return 5;
+      case OrderStatus.cancelled:
+        return -1;
     }
   }
 
@@ -107,6 +134,9 @@ class DeliveryInfo {
   final String? riderName;
   final String? riderContact;
   final String? lalamoveBookingId;
+  final String? deliveryAddress;
+  final double? destinationLatitude;
+  final double? destinationLongitude;
 
   const DeliveryInfo({
     required this.preference,
@@ -114,6 +144,9 @@ class DeliveryInfo {
     this.riderName,
     this.riderContact,
     this.lalamoveBookingId,
+    this.deliveryAddress,
+    this.destinationLatitude,
+    this.destinationLongitude,
   });
 
   factory DeliveryInfo.fromJson(Map<String, dynamic> json) => DeliveryInfo(
@@ -122,6 +155,18 @@ class DeliveryInfo {
     riderName: json['rider_name'] as String?,
     riderContact: json['rider_contact'] as String?,
     lalamoveBookingId: json['lalamove_booking_id'] as String?,
+    deliveryAddress:
+        json['delivery_address'] as String? ?? json['address'] as String?,
+    destinationLatitude: _parseCoordinate(
+      json['delivery_latitude'] ??
+          json['destination_latitude'] ??
+          json['latitude'],
+    ),
+    destinationLongitude: _parseCoordinate(
+      json['delivery_longitude'] ??
+          json['destination_longitude'] ??
+          json['longitude'],
+    ),
   );
 
   bool get isLalamove => preference == 'lalamove';
@@ -167,6 +212,19 @@ class OrderDetail {
 
     final statusStr = json['status'] as String? ?? 'pending';
     OrderStatus mappedStatus = OrderStatusX.fromString(statusStr);
+    final rawDelivery = json['delivery'];
+    final deliveryData = rawDelivery is Map<String, dynamic>
+        ? rawDelivery
+        : null;
+    final hasDeliveryData =
+        deliveryData != null ||
+        json.containsKey('delivery_address') ||
+        json.containsKey('delivery_latitude') ||
+        json.containsKey('delivery_longitude');
+    final deliveryJson = <String, dynamic>{
+      ...json,
+      ...?deliveryData,
+    };
 
     return OrderDetail(
       id: json['id'] as int? ?? 0,
@@ -180,9 +238,7 @@ class OrderDetail {
           .map((i) => OrderedItem.fromJson(i as Map<String, dynamic>))
           .toList(),
       notes: json['notes'] as String?,
-      delivery: json['delivery'] != null
-          ? DeliveryInfo.fromJson(json['delivery'] as Map<String, dynamic>)
-          : null,
+      delivery: hasDeliveryData ? DeliveryInfo.fromJson(deliveryJson) : null,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
           : DateTime.now(),
@@ -191,6 +247,12 @@ class OrderDetail {
           : null,
     );
   }
+}
+
+double? _parseCoordinate(dynamic value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value);
+  return null;
 }
 
 // ─── Support Chat Models ───────────────────────────────────────────────────────
@@ -274,13 +336,13 @@ class TimelineStep {
   });
 
   factory TimelineStep.fromJson(Map<String, dynamic> json) => TimelineStep(
-    status:      json['status']       as String? ?? 'pending',
-    label:       json['label']        as String? ?? 'Step',
-    changedAt:   json['changed_at'] != null
+    status: json['status'] as String? ?? 'pending',
+    label: json['label'] as String? ?? 'Step',
+    changedAt: json['changed_at'] != null
         ? DateTime.tryParse(json['changed_at'] as String)
         : null,
     isCompleted: json['is_completed'] as bool? ?? false,
-    isCurrent:   json['is_current']   as bool? ?? false,
+    isCurrent: json['is_current'] as bool? ?? false,
   );
 }
 
@@ -288,26 +350,33 @@ class OrderTimeline {
   final int orderId;
   final String orderNumber;
   final String currentStatus;
+  final String? deliveryPreference;
   final List<TimelineStep> steps;
 
   const OrderTimeline({
     required this.orderId,
     required this.orderNumber,
     required this.currentStatus,
+    this.deliveryPreference,
     required this.steps,
   });
 
-  factory OrderTimeline.fromJson(Map<String, dynamic> json) => OrderTimeline(
-    orderId:       json['order_id']       as int? ?? 0,
-    orderNumber:   json['order_number']   as String? ?? '',
-    currentStatus: json['current_status'] as String? ?? 'pending',
-    steps: (json['timeline'] as List<dynamic>? ?? [])
-        .map((e) => TimelineStep.fromJson(e as Map<String, dynamic>))
-        .toList(),
-  );
+  factory OrderTimeline.fromJson(Map<String, dynamic> json) {
+    final delivery = json['delivery'] as Map<String, dynamic>?;
+    return OrderTimeline(
+      orderId: json['order_id'] as int? ?? 0,
+      orderNumber: json['order_number'] as String? ?? '',
+      currentStatus: json['current_status'] as String? ?? 'pending',
+      deliveryPreference:
+          json['delivery_preference'] as String? ??
+          delivery?['preference'] as String?,
+      steps: (json['timeline'] as List<dynamic>? ?? [])
+          .map((e) => TimelineStep.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 
-  TimelineStep? get currentStep =>
-      steps.where((s) => s.isCurrent).firstOrNull;
+  TimelineStep? get currentStep => steps.where((s) => s.isCurrent).firstOrNull;
 }
 
 class OrderStatusPoll {
@@ -323,12 +392,13 @@ class OrderStatusPoll {
     this.paymentStatus,
   });
 
-  factory OrderStatusPoll.fromJson(Map<String, dynamic> json) => OrderStatusPoll(
-    id:            json['id']             as int? ?? 0,
-    status:        json['status']         as String? ?? 'pending',
-    canCancel:     json['can_cancel']     as bool? ?? false,
-    paymentStatus: json['payment_status'] as String?,
-  );
+  factory OrderStatusPoll.fromJson(Map<String, dynamic> json) =>
+      OrderStatusPoll(
+        id: json['id'] as int? ?? 0,
+        status: json['status'] as String? ?? 'pending',
+        canCancel: json['can_cancel'] as bool? ?? false,
+        paymentStatus: json['payment_status'] as String?,
+      );
 }
 
 // ─── §1.9 Rider Live Location Model ───────────────────────────────────────────
@@ -351,11 +421,11 @@ class RiderLocation {
   });
 
   factory RiderLocation.fromJson(Map<String, dynamic> json) => RiderLocation(
-    orderId:   json['order_id']  as int? ?? 0,
-    riderId:   json['rider_id']  as int? ?? 0,
-    latitude:  (json['latitude']  as num?)?.toDouble() ?? 0.0,
+    orderId: json['order_id'] as int? ?? 0,
+    riderId: json['rider_id'] as int? ?? 0,
+    latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
     longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
-    accuracy:  json['accuracy'] != null
+    accuracy: json['accuracy'] != null
         ? (json['accuracy'] as num).toDouble()
         : null,
     updatedAt: json['updated_at'] != null

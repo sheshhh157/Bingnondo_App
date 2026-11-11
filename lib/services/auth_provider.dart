@@ -15,20 +15,13 @@ class AuthProvider extends ChangeNotifier {
   AuthStatus _status = AuthStatus.initial;
   CustomerUser? _user;
 
-  // Stores email OR mobile number depending on the registration flow
   String? _pendingContact;
-
-  // Tracks whether the pending flow is mobile-based
-  bool _pendingIsMobile = false;
 
   AuthStatus get status        => _status;
   CustomerUser? get user       => _user;
   String? get pendingContact   => _pendingContact;
-  bool get pendingIsMobile     => _pendingIsMobile;
 
-  /// Legacy getter — returns pendingContact when it's an email (backward compat)
-  String? get pendingEmail =>
-      (_pendingIsMobile == false) ? _pendingContact : null;
+  String? get pendingEmail => _pendingContact;
 
   bool get isAuthenticated => _status == AuthStatus.authenticated;
 
@@ -68,16 +61,16 @@ class AuthProvider extends ChangeNotifier {
   // ─── Sign In ─────────────────────────────────────────────────────────────
 
   Future<void> login({
-    required String emailOrMobile,
+    required String email,
     required String password,
   }) async {
     if (kUseMock) {
-      await _mockLogin(emailOrMobile, password);
+      await _mockLogin(email, password);
       return;
     }
 
     final response = await _api.login(
-      emailOrMobile: emailOrMobile,
+      email: email,
       password: password,
     );
 
@@ -104,7 +97,6 @@ class AuthProvider extends ChangeNotifier {
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 600));
       _pendingContact  = email.trim().toLowerCase();
-      _pendingIsMobile = false;
       _status = AuthStatus.awaitingVerification;
       notifyListeners();
       return;
@@ -115,38 +107,11 @@ class AuthProvider extends ChangeNotifier {
     await _api.register(email: normalizedEmail, password: password);
 
     _pendingContact  = normalizedEmail;
-    _pendingIsMobile = false;
     _status = AuthStatus.awaitingVerification;
     notifyListeners();
   }
 
-  // ─── Register via Mobile ──────────────────────────────────────────────────
-
-  Future<void> registerMobile({
-    required String mobileNumber,
-    required String password,
-  }) async {
-    if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 600));
-      _pendingContact  = mobileNumber.trim();
-      _pendingIsMobile = true;
-      _status = AuthStatus.awaitingVerification;
-      notifyListeners();
-      return;
-    }
-
-    await _api.registerMobile(
-      mobileNumber: mobileNumber.trim(),
-      password: password,
-    );
-
-    _pendingContact  = mobileNumber.trim();
-    _pendingIsMobile = true;
-    _status = AuthStatus.awaitingVerification;
-    notifyListeners();
-  }
-
-  // ─── OTP Verification (email or mobile) ──────────────────────────────────
+  // ─── OTP Verification ────────────────────────────────────────────────────
 
   Future<void> verifyOtp({required String otp}) async {
     if (_pendingContact == null) {
@@ -159,14 +124,10 @@ class AuthProvider extends ChangeNotifier {
       throw const ApiException('Invalid OTP.', statusCode: 422);
     }
 
-    final purpose = _pendingIsMobile
-        ? 'mobile_verification'
-        : 'email_verification';
-
     final response = await _api.verifyOtp(
       contact: _pendingContact!,
       otp: otp,
-      purpose: purpose,
+      purpose: 'email_verification',
     );
 
     if (response.user == null) {
@@ -218,11 +179,10 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    final purpose = _pendingIsMobile
-        ? 'mobile_verification'
-        : 'email_verification';
-
-    await _api.resendOtp(contact: _pendingContact!, purpose: purpose);
+    await _api.resendOtp(
+      contact: _pendingContact!,
+      purpose: 'email_verification',
+    );
   }
 
   // ─── Resend Password Reset OTP ───────────────────────────────────────────
@@ -262,7 +222,6 @@ class AuthProvider extends ChangeNotifier {
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 600));
       _pendingContact  = normalizedEmail;
-      _pendingIsMobile = false;
       notifyListeners();
       return;
     }
@@ -270,31 +229,6 @@ class AuthProvider extends ChangeNotifier {
     await _api.forgotPassword(email: normalizedEmail);
 
     _pendingContact  = normalizedEmail;
-    _pendingIsMobile = false;
-    notifyListeners();
-  }
-
-  // ─── Forgot Password via Mobile ───────────────────────────────────────────
-
-  Future<void> forgotPasswordMobile({required String mobileNumber}) async {
-    final normalized = mobileNumber.trim();
-
-    if (normalized.isEmpty) {
-      throw const ApiException('Mobile number is required.', statusCode: 422);
-    }
-
-    if (kUseMock) {
-      await Future.delayed(const Duration(milliseconds: 600));
-      _pendingContact  = normalized;
-      _pendingIsMobile = true;
-      notifyListeners();
-      return;
-    }
-
-    await _api.forgotPasswordMobile(mobileNumber: normalized);
-
-    _pendingContact  = normalized;
-    _pendingIsMobile = true;
     notifyListeners();
   }
 
@@ -327,7 +261,6 @@ class AuthProvider extends ChangeNotifier {
     );
 
     _pendingContact  = null;
-    _pendingIsMobile = false;
     notifyListeners();
   }
 
@@ -340,33 +273,22 @@ class AuthProvider extends ChangeNotifier {
 
     _user            = null;
     _pendingContact  = null;
-    _pendingIsMobile = false;
     _status          = AuthStatus.unauthenticated;
     notifyListeners();
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
-  void setPendingContact(String contact, {bool isMobile = false}) {
-    _pendingContact  = contact.trim().toLowerCase();
-    _pendingIsMobile = isMobile;
-    notifyListeners();
-  }
-
-  // Legacy compat
-  void setPendingEmail(String email) => setPendingContact(email);
-
   // ─── Mock Login ──────────────────────────────────────────────────────────
 
-  Future<void> _mockLogin(String emailOrMobile, String password) async {
+  Future<void> _mockLogin(String email, String password) async {
     await Future.delayed(const Duration(milliseconds: 600));
 
     _user = CustomerUser(
       id: 1,
-      email: emailOrMobile.contains('@') ? emailOrMobile : null,
-      mobileNumber: emailOrMobile.contains('@') ? null : emailOrMobile,
+      email: email,
+      mobileNumber: null,
       emailVerified:    true,
-      mobileVerified:   true,
       profileCompleted: true,
       status:           'active',
       firstName:        'Test',

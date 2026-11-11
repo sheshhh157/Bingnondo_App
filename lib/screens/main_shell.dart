@@ -26,16 +26,17 @@ class _MainShellState extends State<MainShell>
   int _prevCartCount = 0;
 
   // IndexedStack keeps all screens alive — no rebuild on tab switch
-  final List<Widget> _screens = const [
-    HomeMenuScreen(),
-    CartScreen(),
-    MyOrdersScreen(),
-    AccountSettingsScreen(),
-  ];
+  late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
+    _screens = [
+      const HomeMenuScreen(),
+      CartScreen(onBrowseMenu: _showMenu),
+      MyOrdersScreen(onBrowseMenu: _showMenu),
+      const AccountSettingsScreen(),
+    ];
     _badgeBounceCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 500));
     _badgeBounce = TweenSequence([
@@ -47,6 +48,10 @@ class _MainShellState extends State<MainShell>
           tween: Tween<double>(begin: 0.85, end: 1.0), weight: 30),
     ]).animate(
         CurvedAnimation(parent: _badgeBounceCtrl, curve: Curves.easeOut));
+  }
+
+  void _showMenu() {
+    setState(() => _currentIndex = 0);
   }
 
   @override
@@ -148,7 +153,7 @@ class _MainShellState extends State<MainShell>
                       builder: (_, cart, __) => GestureDetector(
                         onTap: () {
                           setState(() => _currentIndex = 1);
-                          context.read<CartProvider>().loadDeliveryFee();
+                          context.read<CartProvider>().loadCheckoutConfig();
                         },
                         behavior: HitTestBehavior.opaque,
                         child: SizedBox(

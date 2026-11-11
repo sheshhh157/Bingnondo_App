@@ -9,7 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const String _baseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:3000',
+  defaultValue: 'https://bingnondobackend-production.up.railway.app',
 );
 
 // ─── API Exception ──────────────────────────────────────────────────────────
@@ -67,7 +67,6 @@ class CustomerUser {
   final String? email;
   final String? mobileNumber;
   final bool emailVerified;
-  final bool mobileVerified;
   final bool profileCompleted;
   final String status;
   final String? firstName;
@@ -78,7 +77,6 @@ class CustomerUser {
     this.email,
     this.mobileNumber,
     required this.emailVerified,
-    required this.mobileVerified,
     required this.profileCompleted,
     required this.status,
     this.firstName,
@@ -91,7 +89,6 @@ class CustomerUser {
       email:            json['email'] as String?,
       mobileNumber:     json['mobile_number'] as String?,
       emailVerified:    json['email_verified']   as bool? ?? false,
-      mobileVerified:   json['mobile_verified']  as bool? ?? false,
       profileCompleted: json['profile_completed'] as bool? ?? false,
       status:           json['status'] as String? ?? 'awaiting_verification',
       firstName:        json['first_name'] as String?,
@@ -206,21 +203,8 @@ class ApiService {
     return AuthResponse.fromJson(data);
   }
 
-  /// POST /api/auth/customer/register-mobile
-  /// Mobile registration — sends OTP via SMS
-  Future<AuthResponse> registerMobile({
-    required String mobileNumber,
-    required String password,
-  }) async {
-    final data = await _post(
-      '/api/auth/customer/register-mobile',
-      {'mobile_number': mobileNumber, 'password': password},
-    );
-    return AuthResponse.fromJson(data);
-  }
-
   /// POST /api/auth/customer/verify-otp
-  /// purpose: email_verification | mobile_verification | password_reset
+  /// purpose: email_verification | password_reset
   Future<AuthResponse> verifyOtp({
     required String contact,
     required String otp,
@@ -244,14 +228,13 @@ class ApiService {
   }
 
   /// POST /api/auth/customer/login
-  /// email field accepts email address OR mobile number
   Future<AuthResponse> login({
-    required String emailOrMobile,
+    required String email,
     required String password,
   }) async {
     final data = await _post(
       '/api/auth/customer/login',
-      {'email': emailOrMobile, 'password': password},
+      {'email': email, 'password': password},
     );
 
     final response = AuthResponse.fromJson(data);
@@ -285,16 +268,8 @@ class ApiService {
     );
   }
 
-  /// POST /api/auth/forgot-password-mobile  (via SMS)
-  Future<void> forgotPasswordMobile({required String mobileNumber}) async {
-    await _post(
-      '/api/auth/forgot-password-mobile',
-      {'mobile_number': mobileNumber},
-    );
-  }
-
   /// POST /api/auth/reset-password
-  /// contact = email address OR mobile number
+  /// contact = email address
   Future<void> resetPassword({
     required String contact,
     required String otp,

@@ -36,6 +36,9 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     with TickerProviderStateMixin {
   late TabController _tabController;
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
+  String _searchQuery = '';
 
   double _collapseRatio = 0.0;
 
@@ -101,6 +104,8 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   void dispose() {
     _tabController.dispose();
     _badgeBounceCtrl.dispose();
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _scrollController
       ..removeListener(_onScroll)
       ..dispose();
@@ -220,6 +225,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
                           c.id: menuProvider.itemsForCategory(c.id).length,
                       },
                     ),
+                  if (menuProvider.isLoaded) _buildSearchField(),
                   Expanded(child: _buildBody(context, menuProvider)),
                 ],
               ),
@@ -239,6 +245,12 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
       case MenuLoadState.error:
         return _buildErrorState(context, menuProvider);
       case MenuLoadState.loaded:
+        if (_searchQuery.trim().isNotEmpty) {
+          return _buildSearchResults(
+            context,
+            menuProvider.searchItems(_searchQuery),
+          );
+        }
         if (menuProvider.categories.isEmpty) return const _EmptyMenuState();
         // Tab index 0 = ALL (sections layout), 1..n = individual categories
         return TabBarView(
@@ -254,6 +266,111 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
           ],
         );
     }
+  }
+
+  Widget _buildSearchField() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.md,
+        AppSpacing.sm,
+      ),
+      child: TextField(
+        controller: _searchController,
+        textInputAction: TextInputAction.search,
+        onChanged: (value) {
+          _searchDebounce?.cancel();
+          if (value.trim().isEmpty) {
+            setState(() => _searchQuery = '');
+            return;
+          }
+          _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+            if (mounted) setState(() => _searchQuery = value);
+          });
+        },
+        decoration: InputDecoration(
+          hintText: 'Search menu items...',
+          prefixIcon: const Icon(Icons.search_rounded, color: AppColors.gold),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                ),
+          filled: true,
+          fillColor: AppColors.surface,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchResults(BuildContext context, List<MenuItem> items) {
+    if (items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.search_off_rounded,
+                size: 48,
+                color: AppColors.textMuted,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'No menu items found',
+                style: AppTextStyles.headline(context),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Try another item name, description, or category.',
+                style: AppTextStyles.bodyMedium(context),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.xs,
+            AppSpacing.md,
+            0,
+          ),
+          child: Text(
+            '${items.length} ${items.length == 1 ? 'item' : 'items'} found',
+            style: AppTextStyles.bodySmall(context),
+          ),
+        ),
+        Expanded(child: _buildCategoryContent(context, items)),
+      ],
+    );
   }
 
   // ─── ALL tab: featured hero + vertical sections ────────────────────────────

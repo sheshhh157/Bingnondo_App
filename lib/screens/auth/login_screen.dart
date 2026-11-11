@@ -68,7 +68,7 @@ class _LoginScreenState extends State<LoginScreen>
 
     try {
       await context.read<AuthProvider>().login(
-        emailOrMobile: _emailController.text.trim(),
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
@@ -289,9 +289,9 @@ class _LoginScreenState extends State<LoginScreen>
                 const SizedBox(height: AppSpacing.md),
               ],
 
-              // Email/Mobile
+              // Email
               AppTextField(
-                label: 'Email or Mobile Number',
+                label: 'Email Address',
                 hint: 'you@example.com',
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -303,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen>
                   color: AppColors.gold,
                 ),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Please enter your email or mobile number.';
+                  if (v == null || v.trim().isEmpty) return 'Please enter your email address.';
                   return null;
                 },
                 onChanged: (_) {

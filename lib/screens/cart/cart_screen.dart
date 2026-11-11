@@ -14,7 +14,9 @@ import 'checkout_screen.dart';
 import '../profile/complete_profile_screen.dart';
 
 class CartScreen extends StatefulWidget {
-  const CartScreen({super.key});
+  final VoidCallback? onBrowseMenu;
+
+  const CartScreen({super.key, this.onBrowseMenu});
 
   @override
   State<CartScreen> createState() => _CartScreenState();
@@ -37,7 +39,7 @@ class _CartScreenState extends State<CartScreen>
     // Delivery fee is public config — fetch it as soon as the cart exists so
     // the summary doesn't show ₱0.00 while the customer is still shopping.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<CartProvider>().loadDeliveryFee();
+      if (mounted) context.read<CartProvider>().loadCheckoutConfig();
     });
   }
 
@@ -216,6 +218,7 @@ class _CartScreenState extends State<CartScreen>
         child: Consumer<CartProvider>(
           builder: (context, cart, _) {
             return SafeArea(
+              top: false,
               child: Column(
                 children: [
                   _buildHeader(context, cart),
@@ -237,13 +240,13 @@ class _CartScreenState extends State<CartScreen>
   // ─── Header ────────────────────────────────────────────────────────────────
   Widget _buildHeader(BuildContext context, CartProvider cart) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.primaryDark,
-        borderRadius:
-        BorderRadius.vertical(bottom: Radius.circular(AppRadius.xl)),
-      ),
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.sm, AppSpacing.sm, AppSpacing.md),
+      width: double.infinity,
+      color: AppColors.primaryDark,
+      padding: EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          MediaQuery.of(context).padding.top + AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.md),
       child: Row(
         children: [
 
@@ -472,7 +475,13 @@ class _CartScreenState extends State<CartScreen>
             const SizedBox(height: AppSpacing.xl),
             PrimaryButton(
               label: 'BROWSE MENU',
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                if (widget.onBrowseMenu != null) {
+                  widget.onBrowseMenu!();
+                } else if (Navigator.of(context).canPop()) {
+                  Navigator.pop(context);
+                }
+              },
               isSmall: true,
             ),
           ],
@@ -984,10 +993,13 @@ class _CartSummaryCard extends StatelessWidget {
             value: '₱${cart.subtotal.toStringAsFixed(2)}',
           ),
           const SizedBox(height: AppSpacing.sm),
-          _SummaryRow(
-            label: 'Delivery Fee',
+          if (cart.ridersAvailable) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _SummaryRow(
+              label: 'Delivery Fee',
             value: '₱${cart.deliveryFee.toStringAsFixed(2)}',
-          ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.md),
           const Divider(color: AppColors.border, thickness: 1),
           const SizedBox(height: AppSpacing.sm),
