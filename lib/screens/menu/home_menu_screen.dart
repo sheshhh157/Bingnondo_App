@@ -35,12 +35,10 @@ class HomeMenuScreen extends StatefulWidget {
 class _HomeMenuScreenState extends State<HomeMenuScreen>
     with TickerProviderStateMixin {
   late TabController _tabController;
-  final ScrollController _scrollController = ScrollController();
+  final ValueNotifier<double> _collapseRatio = ValueNotifier(0);
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
   String _searchQuery = '';
-
-  double _collapseRatio = 0.0;
 
   late AnimationController _badgeBounceCtrl;
   late Animation<double> _badgeBounce;
@@ -65,8 +63,6 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     ]).animate(
         CurvedAnimation(parent: _badgeBounceCtrl, curve: Curves.easeOut));
 
-    _scrollController.addListener(_onScroll);
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<MenuProvider>().loadMenu().then((_) => _rebuildTabs());
       // Refresh the open/closed state whenever the home screen mounts
@@ -81,13 +77,15 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     });
   }
 
-  void _onScroll() {
-    final offset =
-    _scrollController.offset.clamp(0.0, _scrollTriggerH);
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+
+    final offset = notification.metrics.pixels.clamp(0.0, _scrollTriggerH);
     final ratio = offset / _scrollTriggerH;
-    if ((ratio - _collapseRatio).abs() > 0.01) {
-      setState(() => _collapseRatio = ratio);
+    if ((ratio - _collapseRatio.value).abs() > 0.01) {
+      _collapseRatio.value = ratio;
     }
+    return false;
   }
 
   void _rebuildTabs() {
@@ -104,11 +102,9 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   void dispose() {
     _tabController.dispose();
     _badgeBounceCtrl.dispose();
+    _collapseRatio.dispose();
     _searchDebounce?.cancel();
     _searchController.dispose();
-    _scrollController
-      ..removeListener(_onScroll)
-      ..dispose();
     super.dispose();
   }
 
@@ -190,48 +186,59 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Consumer<MenuProvider>(
-        builder: (context, menuProvider, _) {
-          return Stack(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: Opacity(
+                opacity: 0.3,
+                child: SvgPicture.asset(
+                  'assets/images/menu_bg_pattern.svg',
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
+          Column(
             children: [
-              // ── SVG Background Pattern ─────────────────────────────────
-              Positioned.fill(
-                child: Opacity(
-                  opacity: 0.3, // Pwedeng baguhin ang opacity dito (halimbawa 0.1, 0.3, o 0.8)
-                  child: SvgPicture.asset(
-                    'assets/images/menu_bg_pattern.svg',
-                    fit: BoxFit.cover,
+              ValueListenableBuilder<double>(
+                valueListenable: _collapseRatio,
+                builder: (context, collapseRatio, _) => _PersistentHeader(
+                  collapseRatio: collapseRatio,
+                  expandedHeight: _expandedHeaderH,
+                  collapsedHeight: _collapsedHeaderH,
+                  badgeBounce: _badgeBounce,
+                  onNotifTap: () => _push(const NotificationsScreen()),
+                ),
+              ),
+              Expanded(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: _onScrollNotification,
+                  child: Consumer<MenuProvider>(
+                    builder: (context, menuProvider, _) => Column(
+                      children: [
+                        if (menuProvider.isLoaded &&
+                            menuProvider.categories.isNotEmpty)
+                          _CategoryTabBar(
+                            controller: _tabController,
+                            categories: menuProvider.categories,
+                            itemCounts: {
+                              for (final category in menuProvider.categories)
+                                category.id: menuProvider
+                                    .itemsForCategory(category.id)
+                                    .length,
+                            },
+                          ),
+                        if (menuProvider.isLoaded) _buildSearchField(),
+                        Expanded(child: _buildBody(context, menuProvider)),
+                      ],
+                    ),
                   ),
                 ),
               ),
-
-              // ── Main content column ─────────────────────────────────────
-              Column(
-                children: [
-                  _PersistentHeader(
-                    collapseRatio: _collapseRatio,
-                    expandedHeight: _expandedHeaderH,
-                    collapsedHeight: _collapsedHeaderH,
-                    badgeBounce: _badgeBounce,
-                    onNotifTap: () => _push(const NotificationsScreen()),
-                  ),
-                  if (menuProvider.isLoaded &&
-                      menuProvider.categories.isNotEmpty)
-                    _CategoryTabBar(
-                      controller: _tabController,
-                      categories: menuProvider.categories,
-                      itemCounts: {
-                        for (final c in menuProvider.categories)
-                          c.id: menuProvider.itemsForCategory(c.id).length,
-                      },
-                    ),
-                  if (menuProvider.isLoaded) _buildSearchField(),
-                  Expanded(child: _buildBody(context, menuProvider)),
-                ],
-              ),
             ],
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -376,46 +383,57 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
   // ─── ALL tab: featured hero + vertical sections ────────────────────────────
   Widget _buildAllSectionsView(BuildContext context, MenuProvider menuProvider) {
     final cats = menuProvider.categories;
-    final isClosed =
-        context.watch<BusinessHoursProvider>().isKnownClosed;
+    final itemsByCategory = menuProvider.itemsByCategory;
 
     // Featured picks — first available item from each category for variety.
     final featured = <MenuItem>[];
     for (final cat in cats) {
-      final available =
-      menuProvider.itemsForCategory(cat.id).where((i) => i.isAvailable);
+      final available = (itemsByCategory[cat.id] ?? const <MenuItem>[])
+          .where((item) => item.isAvailable);
       if (available.isNotEmpty) featured.add(available.first);
       if (featured.length >= 6) break;
     }
+
+    final hasClosedBanner =
+        context.watch<BusinessHoursProvider>().isKnownClosed;
+    final hasFeatured = featured.isNotEmpty;
+    final sectionOffset = (hasClosedBanner ? 1 : 0) + (hasFeatured ? 1 : 0);
+    final itemCount = sectionOffset + cats.length;
 
     return RefreshIndicator(
       onRefresh: () => context.read<MenuProvider>().refresh(),
       color: AppColors.gold,
       backgroundColor: AppColors.background,
-      child: ListView(
-        controller: _scrollController,
+      child: ListView.builder(
         padding: const EdgeInsets.only(bottom: 120),
-        children: [
-          if (isClosed)
-            const Padding(
+        itemCount: itemCount,
+        itemBuilder: (context, index) {
+          if (hasClosedBanner && index == 0) {
+            return const Padding(
               padding: EdgeInsets.fromLTRB(
                   AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
               child: BusinessHoursBanner(),
-            ),
-          if (featured.isNotEmpty)
-            _FeaturedSection(
+            );
+          }
+
+          final featuredIndex = hasClosedBanner ? 1 : 0;
+          if (hasFeatured && index == featuredIndex) {
+            return _FeaturedSection(
               items: featured,
               onItemTap: (item) => _showItemDetail(context, item),
-            ),
-          for (int i = 0; i < cats.length; i++)
-            _CategorySection(
-              category: cats[i],
-              items: menuProvider.itemsForCategory(cats[i].id),
-              onItemTap: (item) => _showItemDetail(context, item),
-              onAddToCart: _handleAddToCart,
-              onViewAll: () => _tabController.animateTo(i + 1),
-            ),
-        ],
+            );
+          }
+
+          final categoryIndex = index - sectionOffset;
+          final category = cats[categoryIndex];
+          return _CategorySection(
+            category: category,
+            items: itemsByCategory[category.id] ?? const <MenuItem>[],
+            onItemTap: (item) => _showItemDetail(context, item),
+            onAddToCart: _handleAddToCart,
+            onViewAll: () => _tabController.animateTo(categoryIndex + 1),
+          );
+        },
       ),
     );
   }
@@ -440,7 +458,6 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
       color: AppColors.gold,
       backgroundColor: AppColors.background,
       child: ListView.separated(
-        controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(
             AppSpacing.md, AppSpacing.md, AppSpacing.md, 120),
         itemCount: items.length,
@@ -461,7 +478,6 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
       color: AppColors.gold,
       backgroundColor: AppColors.background,
       child: GridView.builder(
-        controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(
             AppSpacing.md, AppSpacing.md, AppSpacing.md, 120),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -2616,12 +2632,26 @@ class _FoodImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (url != null && url!.isNotEmpty) {
-      return Image.network(
-        url!,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _ph(),
+      final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final imageWidth = width.isFinite ? width : constraints.maxWidth;
+          final imageHeight = height.isFinite ? height : constraints.maxHeight;
+          return Image.network(
+            url!,
+            width: width,
+            height: height,
+            cacheWidth: imageWidth.isFinite
+                ? (imageWidth * devicePixelRatio).round()
+                : null,
+            cacheHeight: imageHeight.isFinite
+                ? (imageHeight * devicePixelRatio).round()
+                : null,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.low,
+            errorBuilder: (_, __, ___) => _ph(),
+          );
+        },
       );
     }
     return _ph();

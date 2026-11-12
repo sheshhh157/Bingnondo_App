@@ -1,8 +1,12 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
+import 'package:flutter/widgets.dart';
 
 import 'api_service.dart';
 import '../mock/mock_data.dart';
 import '../services/socket_service.dart';
+import 'push_notification_service.dart';
+import 'session_expiration.dart';
 
 enum AuthStatus {
   initial,
@@ -11,15 +15,17 @@ enum AuthStatus {
   awaitingVerification,
 }
 
-class AuthProvider extends ChangeNotifier {
+class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   AuthStatus _status = AuthStatus.initial;
   CustomerUser? _user;
+  DateTime? _sessionExpiresAt;
+  Timer? _sessionExpiryTimer;
 
   String? _pendingContact;
 
-  AuthStatus get status        => _status;
-  CustomerUser? get user       => _user;
-  String? get pendingContact   => _pendingContact;
+  AuthStatus get status => _status;
+  CustomerUser? get user => _user;
+  String? get pendingContact => _pendingContact;
 
   String? get pendingEmail => _pendingContact;
 
@@ -28,6 +34,7 @@ class AuthProvider extends ChangeNotifier {
   final ApiService _api = ApiService.instance;
 
   AuthProvider() {
+    WidgetsBinding.instance.addObserver(this);
     _checkExistingToken();
   }
 
@@ -48,39 +55,107 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    try {
-      _status = AuthStatus.authenticated;
-      notifyListeners();
-    } catch (_) {
+    if (!_scheduleSessionExpiry(token)) {
       await _api.clearTokens();
       _status = AuthStatus.unauthenticated;
       notifyListeners();
+      return;
     }
+
+    _status = AuthStatus.authenticated;
+    notifyListeners();
+    unawaited(PushNotificationService.instance.registerCurrentDevice());
+  }
+
+  bool _scheduleSessionExpiry(String token) {
+    final expiresAt = customerAccessTokenExpiry(token);
+    if (expiresAt == null || !expiresAt.isAfter(DateTime.now().toUtc())) {
+      return false;
+    }
+
+    _sessionExpiryTimer?.cancel();
+    _sessionExpiresAt = expiresAt;
+    _sessionExpiryTimer = Timer(
+      expiresAt.difference(DateTime.now().toUtc()),
+      _expireSession,
+    );
+    return true;
+  }
+
+  void _expireSession() {
+    if (_status != AuthStatus.authenticated) return;
+
+    _sessionExpiryTimer?.cancel();
+    _sessionExpiryTimer = null;
+    _sessionExpiresAt = null;
+    _user = null;
+    _pendingContact = null;
+    _status = AuthStatus.unauthenticated;
+    SocketService.instance.disconnect();
+    notifyListeners();
+
+    unawaited(_clearExpiredSessionTokens());
+    if (!kUseMock) {
+      unawaited(PushNotificationService.instance.unregisterCurrentDevice());
+    }
+  }
+
+  Future<void> _clearExpiredSessionTokens() async {
+    try {
+      await _api.clearTokens();
+    } catch (error, stackTrace) {
+      debugPrint('[Auth] Failed to clear expired session tokens: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+
+    final expiresAt = _sessionExpiresAt;
+    if (expiresAt != null && !expiresAt.isAfter(DateTime.now().toUtc())) {
+      _expireSession();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sessionExpiryTimer?.cancel();
+    super.dispose();
   }
 
   // ─── Sign In ─────────────────────────────────────────────────────────────
 
-  Future<void> login({
-    required String email,
-    required String password,
-  }) async {
+  Future<void> login({required String email, required String password}) async {
     if (kUseMock) {
       await _mockLogin(email, password);
       return;
     }
 
-    final response = await _api.login(
-      email: email,
-      password: password,
-    );
+    final response = await _api.login(email: email, password: password);
 
     if (response.user == null) {
-      throw const ApiException('Login failed. Please try again.', statusCode: 500);
+      throw const ApiException(
+        'Login failed. Please try again.',
+        statusCode: 500,
+      );
+    }
+
+    final accessToken = response.accessToken;
+    if (accessToken == null || !_scheduleSessionExpiry(accessToken)) {
+      await _api.clearTokens();
+      throw const ApiException(
+        'Login failed. Please try again.',
+        statusCode: 500,
+      );
     }
 
     _user = response.user;
     _status = AuthStatus.authenticated;
     notifyListeners();
+    unawaited(PushNotificationService.instance.registerCurrentDevice());
 
     final socket = SocketService.instance;
     socket.connect();
@@ -96,7 +171,7 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 600));
-      _pendingContact  = email.trim().toLowerCase();
+      _pendingContact = email.trim().toLowerCase();
       _status = AuthStatus.awaitingVerification;
       notifyListeners();
       return;
@@ -106,7 +181,7 @@ class AuthProvider extends ChangeNotifier {
 
     await _api.register(email: normalizedEmail, password: password);
 
-    _pendingContact  = normalizedEmail;
+    _pendingContact = normalizedEmail;
     _status = AuthStatus.awaitingVerification;
     notifyListeners();
   }
@@ -131,11 +206,14 @@ class AuthProvider extends ChangeNotifier {
     );
 
     if (response.user == null) {
-      throw const ApiException('Verification failed. Please try again.', statusCode: 500);
+      throw const ApiException(
+        'Verification failed. Please try again.',
+        statusCode: 500,
+      );
     }
 
     await _api.clearTokens();
-    _user   = null;
+    _user = null;
     _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
@@ -147,13 +225,16 @@ class AuthProvider extends ChangeNotifier {
     required String otp,
   }) async {
     final normalizedContact = contact.trim().toLowerCase();
-    final normalizedOtp     = otp.trim();
+    final normalizedOtp = otp.trim();
 
     if (normalizedContact.isEmpty) {
       throw const ApiException('Contact is required.', statusCode: 422);
     }
     if (normalizedOtp.length != 6) {
-      throw const ApiException('Please enter the 6-digit OTP.', statusCode: 422);
+      throw const ApiException(
+        'Please enter the 6-digit OTP.',
+        statusCode: 422,
+      );
     }
 
     if (kUseMock) {
@@ -201,10 +282,7 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
-    await _api.resendOtp(
-      contact: normalizedContact,
-      purpose: 'password_reset',
-    );
+    await _api.resendOtp(contact: normalizedContact, purpose: 'password_reset');
 
     _pendingContact = normalizedContact;
     notifyListeners();
@@ -221,14 +299,14 @@ class AuthProvider extends ChangeNotifier {
 
     if (kUseMock) {
       await Future.delayed(const Duration(milliseconds: 600));
-      _pendingContact  = normalizedEmail;
+      _pendingContact = normalizedEmail;
       notifyListeners();
       return;
     }
 
     await _api.forgotPassword(email: normalizedEmail);
 
-    _pendingContact  = normalizedEmail;
+    _pendingContact = normalizedEmail;
     notifyListeners();
   }
 
@@ -244,7 +322,10 @@ class AuthProvider extends ChangeNotifier {
 
     final normalizedOtp = otp.trim();
     if (normalizedOtp.length != 6) {
-      throw const ApiException('Please enter the 6-digit OTP.', statusCode: 422);
+      throw const ApiException(
+        'Please enter the 6-digit OTP.',
+        statusCode: 422,
+      );
     }
 
     if (kUseMock) {
@@ -255,25 +336,32 @@ class AuthProvider extends ChangeNotifier {
     }
 
     await _api.resetPassword(
-      contact:     _pendingContact!,
-      otp:         normalizedOtp,
+      contact: _pendingContact!,
+      otp: normalizedOtp,
       newPassword: newPassword,
     );
 
-    _pendingContact  = null;
+    _pendingContact = null;
     notifyListeners();
   }
 
   // ─── Logout ──────────────────────────────────────────────────────────────
 
   Future<void> logout() async {
+    _sessionExpiryTimer?.cancel();
+    _sessionExpiryTimer = null;
+    _sessionExpiresAt = null;
+
+    if (!kUseMock) {
+      await PushNotificationService.instance.unregisterCurrentDevice();
+    }
     if (!kUseMock) await _api.clearTokens();
 
     SocketService.instance.disconnect();
 
-    _user            = null;
-    _pendingContact  = null;
-    _status          = AuthStatus.unauthenticated;
+    _user = null;
+    _pendingContact = null;
+    _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
 
@@ -288,15 +376,16 @@ class AuthProvider extends ChangeNotifier {
       id: 1,
       email: email,
       mobileNumber: null,
-      emailVerified:    true,
+      emailVerified: true,
       profileCompleted: true,
-      status:           'active',
-      firstName:        'Test',
-      lastName:         'User',
+      status: 'active',
+      firstName: 'Test',
+      lastName: 'User',
     );
 
     _status = AuthStatus.authenticated;
     notifyListeners();
+    unawaited(PushNotificationService.instance.registerCurrentDevice());
 
     final socket = SocketService.instance;
     socket.connect();

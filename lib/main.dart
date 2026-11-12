@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -15,11 +17,18 @@ import 'theme/app_theme.dart';
 import 'widgets/app_widgets.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
-import 'screens/menu/home_menu_screen.dart';
 import 'screens/main_shell.dart';
+import 'screens/notifications/notifications_screen.dart';
+import 'services/push_notification_service.dart';
+
+const MethodChannel _startupSplashChannel = MethodChannel(
+  'bingnondo/startup_splash',
+);
+final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await PushNotificationService.instance.initialize();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -58,128 +67,146 @@ class BingnondoApp extends StatelessWidget {
       title: 'Bingnondo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: Consumer<AuthProvider>(
-        builder: (context, auth, _) {
-          switch (auth.status) {
-            case AuthStatus.initial:
-              return const _SplashScreen();
-            case AuthStatus.authenticated:
-              return const MainShell();
-            case AuthStatus.awaitingVerification:
-              return const SignUpScreen();
-            case AuthStatus.unauthenticated:
-              return const LoginScreen();
-          }
-        },
-      ),
+      navigatorKey: _rootNavigatorKey,
+      home: const _StartupRouter(),
     );
   }
 }
 
-// ─── Splash Screen ─────────────────────────────────────────────────────────────
-class _SplashScreen extends StatefulWidget {
-  const _SplashScreen();
+class _StartupRouter extends StatefulWidget {
+  const _StartupRouter();
+
   @override
-  State<_SplashScreen> createState() => _SplashScreenState();
+  State<_StartupRouter> createState() => _StartupRouterState();
 }
 
-class _SplashScreenState extends State<_SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _scale;
+class _StartupRouterState extends State<_StartupRouter> {
+  AuthProvider? _authProvider;
+  bool _nativeSplashDismissRequested = false;
+  bool _pendingNotificationNavigation = false;
 
   @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1000))
-      ..repeat(reverse: true);
-    _scale = Tween<double>(begin: 0.94, end: 1.06).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    PushNotificationService.instance.setNotificationTapHandler(
+      _openNotificationsFromPush,
+    );
+    final authProvider = context.read<AuthProvider>();
+    if (_authProvider != authProvider) {
+      _authProvider?.removeListener(_onAuthChanged);
+      _authProvider = authProvider..addListener(_onAuthChanged);
+    }
+    _dismissNativeSplashWhenReady(authProvider);
+  }
+
+  void _onAuthChanged() {
+    final authProvider = _authProvider;
+    if (authProvider != null) {
+      _dismissNativeSplashWhenReady(authProvider);
+      if (_pendingNotificationNavigation &&
+          authProvider.status == AuthStatus.authenticated) {
+        _pendingNotificationNavigation = false;
+        _openNotificationsFromPush();
+      }
+    }
+  }
+
+  void _openNotificationsFromPush() {
+    if (_authProvider?.status != AuthStatus.authenticated) {
+      _pendingNotificationNavigation = true;
+      return;
+    }
+
+    final navigator = _rootNavigatorKey.currentState;
+    if (navigator == null) {
+      _pendingNotificationNavigation = true;
+      return;
+    }
+    navigator.push(
+      MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
+    );
+  }
+
+  void _dismissNativeSplashWhenReady(AuthProvider authProvider) {
+    if (!Platform.isAndroid ||
+        authProvider.status == AuthStatus.initial ||
+        _nativeSplashDismissRequested) {
+      return;
+    }
+
+    _nativeSplashDismissRequested = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _startupSplashChannel.invokeMethod<void>('hide');
+      }
+    });
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _authProvider?.removeListener(_onAuthChanged);
+    PushNotificationService.instance.setNotificationTapHandler(null);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    switch (auth.status) {
+      case AuthStatus.initial:
+        return const _SplashScreen();
+      case AuthStatus.authenticated:
+        return const MainShell();
+      case AuthStatus.awaitingVerification:
+        return const SignUpScreen();
+      case AuthStatus.unauthenticated:
+        return const LoginScreen();
+    }
+  }
+}
+
+// ─── Splash Screen ─────────────────────────────────────────────────────────────
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.primaryDark,
-      body: Stack(
-        children: [
-          const Positioned(
-              top: 24,
-              left: 24,
-              child: ChineseCornerDecoration(size: 60)),
-          const Positioned(
-              top: 24,
-              right: 24,
-              child: ChineseCornerDecoration(size: 60, flipH: true)),
-          const Positioned(
-              bottom: 24,
-              left: 24,
-              child: ChineseCornerDecoration(size: 60, flipV: true)),
-          const Positioned(
-              bottom: 24,
-              right: 24,
-              child: ChineseCornerDecoration(
-                  size: 60, flipH: true, flipV: true)),
-          Center(
-            child: ScaleTransition(
-              scale: _scale,
-              child: Row(
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final catSize = (constraints.maxHeight * 0.15)
+                .clamp(48.0, 88.0)
+                .toDouble();
+            final barWidth = (constraints.maxWidth * 0.7)
+                .clamp(0.0, 240.0)
+                .toDouble();
+
+            return Center(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  BrandCatIcon(size: 80),
-                  const SizedBox(width: AppSpacing.lg),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Bingnondo',
-                        style: const TextStyle(
-                          fontFamily: 'Playfair Display SC',
-                          fontSize: 32,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textOnDark,
-                          letterSpacing: 2,
+                  BrandCatIcon(size: catSize),
+                  const SizedBox(height: AppSpacing.xl),
+                  SizedBox(
+                    width: barWidth,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      child: LinearProgressIndicator(
+                        minHeight: 5,
+                        backgroundColor: Colors.white.withValues(alpha: 0.25),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.white,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'C A F E',
-                        style: const TextStyle(
-                          fontFamily: 'Karla',
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gold,
-                          letterSpacing: 8,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
-            ),
-          ),
-          Positioned(
-            bottom: 60,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                    color: AppColors.gold, strokeWidth: 2.5),
-              ),
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }

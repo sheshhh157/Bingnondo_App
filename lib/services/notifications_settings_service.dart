@@ -14,13 +14,14 @@ class SettingsApiException implements Exception {
   final int? statusCode;
   const SettingsApiException(this.message, {this.statusCode});
   @override
-  String toString() => message;
+  String toString() =>
+      statusCode == null ? message : '$message (HTTP $statusCode)';
 }
 
 class NotificationsSettingsService {
   NotificationsSettingsService._();
   static final NotificationsSettingsService instance =
-  NotificationsSettingsService._();
+      NotificationsSettingsService._();
 
   final _client = http.Client();
   final _storage = const FlutterSecureStorage(
@@ -30,10 +31,16 @@ class NotificationsSettingsService {
 
   Future<Map<String, String>> _authHeaders() async {
     final token = await _storage.read(key: 'access_token');
+    if (token == null || token.isEmpty) {
+      throw const SettingsApiException(
+        'Customer is not signed in; cannot register the device token.',
+        statusCode: 401,
+      );
+    }
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
+      'Authorization': 'Bearer $token',
     };
   }
 
@@ -67,15 +74,44 @@ class NotificationsSettingsService {
     }
   }
 
+  /// POST /api/customer/notifications/device-token
+  Future<void> registerDeviceToken({
+    required String token,
+    required String platform,
+  }) async {
+    final h = await _authHeaders();
+    final r = await _client
+        .post(
+          Uri.parse('$_baseUrl/api/customer/notifications/device-token'),
+          headers: h,
+          body: jsonEncode({'token': token, 'platform': platform}),
+        )
+        .timeout(_timeout);
+    _handleResponse(r);
+  }
+
+  /// DELETE /api/customer/notifications/device-token
+  Future<void> removeDeviceToken(String token) async {
+    final h = await _authHeaders();
+    final r = await _client
+        .delete(
+          Uri.parse('$_baseUrl/api/customer/notifications/device-token'),
+          headers: h,
+          body: jsonEncode({'token': token}),
+        )
+        .timeout(_timeout);
+    _handleResponse(r);
+  }
+
   /// PUT /api/notifications/:id/read  (single)
   Future<void> markRead(int notificationId) async {
     try {
       final h = await _authHeaders();
       await _client
           .put(
-        Uri.parse('$_baseUrl/api/notifications/$notificationId/read'),
-        headers: h,
-      )
+            Uri.parse('$_baseUrl/api/notifications/$notificationId/read'),
+            headers: h,
+          )
           .timeout(_timeout);
     } catch (_) {
       // silently fail — non-critical
@@ -87,10 +123,7 @@ class NotificationsSettingsService {
     try {
       final h = await _authHeaders();
       await _client
-          .put(
-        Uri.parse('$_baseUrl/api/notifications/read-all'),
-        headers: h,
-      )
+          .put(Uri.parse('$_baseUrl/api/notifications/read-all'), headers: h)
           .timeout(_timeout);
     } catch (_) {}
   }
@@ -118,10 +151,10 @@ class NotificationsSettingsService {
       final h = await _authHeaders();
       final r = await _client
           .put(
-        Uri.parse('$_baseUrl/api/customer/profile'),
-        headers: h,
-        body: jsonEncode(req.toJson()),
-      )
+            Uri.parse('$_baseUrl/api/customer/profile'),
+            headers: h,
+            body: jsonEncode(req.toJson()),
+          )
           .timeout(_timeout);
       return AccountProfile.fromJson(_handleResponse(r));
     } on SocketException {
@@ -137,10 +170,10 @@ class NotificationsSettingsService {
       final h = await _authHeaders();
       final r = await _client
           .post(
-        Uri.parse('$_baseUrl/api/auth/change-password'),
-        headers: h,
-        body: jsonEncode(req.toJson()),
-      )
+            Uri.parse('$_baseUrl/api/auth/change-password'),
+            headers: h,
+            body: jsonEncode(req.toJson()),
+          )
           .timeout(_timeout);
       _handleResponse(r);
     } on SocketException {
@@ -155,10 +188,7 @@ class NotificationsSettingsService {
     try {
       final h = await _authHeaders();
       await _client
-          .delete(
-        Uri.parse('$_baseUrl/api/customer/saved-payment'),
-        headers: h,
-      )
+          .delete(Uri.parse('$_baseUrl/api/customer/saved-payment'), headers: h)
           .timeout(_timeout);
     } on SocketException {
       throw const SettingsApiException('No internet connection.');

@@ -9,6 +9,7 @@ enum MenuLoadState { initial, loading, loaded, error }
 class MenuProvider extends ChangeNotifier {
   MenuLoadState _state = MenuLoadState.initial;
   MenuData? _data;
+  Map<int, List<MenuItem>> _itemsByCategory = {};
   String? _errorMessage;
 
   MenuLoadState get state => _state;
@@ -18,9 +19,10 @@ class MenuProvider extends ChangeNotifier {
 
   List<MenuCategory> get categories => _data?.categories ?? [];
   List<MenuItem> get allItems => _data?.items ?? [];
+  Map<int, List<MenuItem>> get itemsByCategory => _itemsByCategory;
 
   List<MenuItem> itemsForCategory(int categoryId) =>
-      _data?.itemsForCategory(categoryId) ?? [];
+      _itemsByCategory[categoryId] ?? const [];
 
   List<MenuItem> searchItems(String query) =>
       _data?.searchItems(query) ?? [];
@@ -51,8 +53,9 @@ class MenuProvider extends ChangeNotifier {
         await _loadMockMenu();
       } else {
         _data = await MenuService.instance.fetchMenu();
-        SocketService.instance.connect();
       }
+      _cacheItemsByCategory();
+      if (!kUseMock) SocketService.instance.connect();
       _state = MenuLoadState.loaded;
     } on MenuApiException catch (e) {
       _errorMessage = e.message;
@@ -74,11 +77,37 @@ class MenuProvider extends ChangeNotifier {
   // by socket_service.dart iterating the incoming items array).
   void updateItemAvailability(int itemId, bool isAvailable) {
     if (_data == null) return;
-    final updated = _data!.items.map((item) {
-      return item.id == itemId ? item.copyWith(isAvailable: isAvailable) : item;
-    }).toList();
-    _data = MenuData(categories: _data!.categories, items: updated);
+    final itemIndex = _data!.items.indexWhere((item) => item.id == itemId);
+    if (itemIndex == -1 || _data!.items[itemIndex].isAvailable == isAvailable) {
+      return;
+    }
+
+    final item = _data!.items[itemIndex].copyWith(isAvailable: isAvailable);
+    final categoryItems = _itemsByCategory[item.categoryId];
+    if (categoryItems == null) return;
+    final categoryItemIndex =
+        categoryItems.indexWhere((categoryItem) => categoryItem.id == itemId);
+    if (categoryItemIndex == -1) return;
+
+    final updatedItems = List<MenuItem>.of(_data!.items)..[itemIndex] = item;
+    final updatedCategoryItems = List<MenuItem>.of(categoryItems)
+      ..[categoryItemIndex] = item;
+
+    _data = MenuData(categories: _data!.categories, items: updatedItems);
+    _itemsByCategory = Map<int, List<MenuItem>>.of(_itemsByCategory)
+      ..[item.categoryId] = updatedCategoryItems;
     notifyListeners();
+  }
+
+  void _cacheItemsByCategory() {
+    final grouped = <int, List<MenuItem>>{};
+    for (final item in _data?.items ?? const <MenuItem>[]) {
+      grouped.putIfAbsent(item.categoryId, () => []).add(item);
+    }
+    _itemsByCategory = {
+      for (final entry in grouped.entries)
+        entry.key: List<MenuItem>.unmodifiable(entry.value),
+    };
   }
 
   // § 1.5 pre-checkout gate — checks live availability for a list of item IDs.
