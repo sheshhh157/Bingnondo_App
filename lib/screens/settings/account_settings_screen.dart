@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/geo_models.dart';
 import '../../models/notification_settings_models.dart';
 import '../../services/account_settings_provider.dart';
@@ -160,8 +161,12 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xxl),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.xxl + MediaQuery.of(context).viewPadding.bottom + 90,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -205,36 +210,21 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
 
           const SizedBox(height: AppSpacing.lg),
 
-          // ── Section: Payment ──────────────────────────────────────────
-          _SectionHeader(label: 'Payment'),
+          // ── Section: Account ──────────────────────────────────────────
+          // ── Section: Help & Support ───────────────────────────────────
+          _SectionHeader(label: 'Help & Support'),
+          const SizedBox(height: AppSpacing.sm),
+          const _VisitUsCard(),
+          const SizedBox(height: AppSpacing.lg),
+          _SectionHeader(label: 'Legal'),
           const SizedBox(height: AppSpacing.sm),
           _SettingsTile(
-            icon: _WalletIconPainter(),
-            label: 'Saved Payment',
-            subtitle: provider.profile!.hasSavedPayment
-                ? '${provider.profile!.savedPaymentType == 'gcash' ? 'GCash' : 'Card'} ···· ${provider.profile!.savedPaymentLast4}'
-                : 'No saved payment method',
-            trailing: provider.profile!.hasSavedPayment
-                ? TextButton(
-              onPressed: () => _confirmRemovePayment(context, provider),
-              style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(44, 32)),
-              child: Text(
-                'Remove',
-                style: GoogleFonts.karla(
-                    fontSize: 12,
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w600),
-              ),
-            )
-                : null,
-            onTap: null, // payment managed inline
+            icon: _LegalIconPainter(),
+            label: 'Terms & Conditions',
+            subtitle: 'Read the terms for using Bingnondo Cafe',
+            onTap: () => _openTermsAndConditions(context),
           ),
-
           const SizedBox(height: AppSpacing.lg),
-
-          // ── Section: Account ──────────────────────────────────────────
           _SectionHeader(label: 'Account'),
           const SizedBox(height: AppSpacing.sm),
           _SettingsTile(
@@ -242,12 +232,9 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
             label: 'Email Address',
             subtitle: provider.profile!.email ??
                 'No email linked (mobile account)',
-            onTap: null, // not editable
+            onTap: null,
           ),
-
           const SizedBox(height: AppSpacing.sm),
-
-          // Sign out tile
           _SettingsTile(
             icon: _SignOutPainter(),
             label: 'Sign Out',
@@ -255,9 +242,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
             labelColor: AppColors.primary,
             onTap: () => _confirmSignOut(context),
           ),
-
           const SizedBox(height: AppSpacing.lg),
-
           // ── Danger Zone ───────────────────────────────────────────────
           _buildDangerZone(context),
         ],
@@ -436,36 +421,10 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     );
   }
 
-  void _confirmRemovePayment(
-      BuildContext context, AccountSettingsProvider provider) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.background,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.lg)),
-        title: Text('Remove saved payment?',
-            style: AppTextStyles.headline(context)),
-        content: Text(
-          'Your saved payment method will be removed. You can add it again at checkout.',
-          style: AppTextStyles.bodyMedium(context),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: AppTextStyles.bodyMedium(context)),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await provider.removeSavedPayment();
-            },
-            child: Text('Remove',
-                style: GoogleFonts.karla(
-                    color: AppColors.error, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
+  void _openTermsAndConditions(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const _TermsAndConditionsScreen()),
     );
   }
 
@@ -498,46 +457,227 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen>
     );
   }
 
-  void _confirmDeleteAccount(BuildContext context) {
-    showDialog(
+  Future<void> _confirmDeleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (_) => const _DeleteAccountConfirmationDialog(),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+    // TODO: POST /api/customer/delete-account
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Account deletion request sent.',
+            style: GoogleFonts.karla(fontSize: 13)),
+        backgroundColor: AppColors.primaryDark,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md)),
+      ),
+    );
+  }
+}
+
+class _TermsAndConditionsScreen extends StatelessWidget {
+  const _TermsAndConditionsScreen();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                color: AppColors.primaryDark,
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.sm,
+                  MediaQuery.of(context).padding.top + AppSpacing.sm,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: AppColors.gold),
+                      tooltip: 'Back',
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Terms & Conditions',
+                        style: GoogleFonts.playfairDisplaySc(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textOnDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.xxl + MediaQuery.of(context).viewPadding.bottom,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Using the Bingnondo Cafe app',
+                          style: AppTextStyles.headline(context)),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'These terms describe the basic rules for using the app to browse the menu, place orders, manage your account, and contact the cafe. By using the app, you agree to follow them.',
+                        style: AppTextStyles.bodyMedium(context),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      const _TermsSection(
+                        title: 'Orders and availability',
+                        body:
+                            'Review your items, quantities, prices, delivery details, and fees before placing an order. Orders depend on item availability and confirmation in the app. Menu items or prices may change.',
+                      ),
+                      const _TermsSection(
+                        title: 'Payments and order updates',
+                        body:
+                            'Choose from the payment methods shown at checkout and follow the instructions there. Payment receipts may be checked by cafe staff. Use the order screen for status updates and contact staff through the support options if you need help.',
+                      ),
+                      const _TermsSection(
+                        title: 'Your account',
+                        body:
+                            'Keep your sign-in details private and provide accurate contact and delivery information. You are responsible for activity carried out through your account.',
+                      ),
+                      const _TermsSection(
+                        title: 'Using the app responsibly',
+                        body:
+                            'Use the app only for lawful purposes. Do not misuse the ordering or support features, interfere with the app, or attempt to access another person’s account.',
+                      ),
+                      const _TermsSection(
+                        title: 'Changes and questions',
+                        body:
+                            'App features and these terms may be updated over time. For questions about an order or these terms, contact Bingnondo Cafe through the support options provided in the app.',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _TermsSection extends StatelessWidget {
+  final String title;
+  final String body;
+
+  const _TermsSection({required this.title, required this.body});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: AppColors.border),
+            boxShadow: AppShadows.card,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: GoogleFonts.karla(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                  )),
+              const SizedBox(height: AppSpacing.xs),
+              Text(body, style: AppTextStyles.bodyMedium(context)),
+            ],
+          ),
+        ),
+      );
+}
+
+class _DeleteAccountConfirmationDialog extends StatefulWidget {
+  const _DeleteAccountConfirmationDialog();
+
+  @override
+  State<_DeleteAccountConfirmationDialog> createState() =>
+      _DeleteAccountConfirmationDialogState();
+}
+
+class _DeleteAccountConfirmationDialogState
+    extends State<_DeleteAccountConfirmationDialog> {
+  final _confirmationController = TextEditingController();
+
+  @override
+  void dispose() {
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
         backgroundColor: AppColors.background,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.lg)),
         title: Text('Delete account?', style: AppTextStyles.headline(context)),
-        content: Text(
-          'This is permanent and cannot be undone. All your data will be erased.',
-          style: AppTextStyles.bodyMedium(context),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This is permanent and cannot be undone. All your data will be erased.',
+              style: AppTextStyles.bodyMedium(context),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text('Type DELETE to confirm.',
+                style: GoogleFonts.karla(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.error,
+                )),
+            const SizedBox(height: AppSpacing.xs),
+            TextField(
+              controller: _confirmationController,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                hintText: 'DELETE',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: Text('Cancel', style: AppTextStyles.bodyMedium(context)),
           ),
           TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // TODO: POST /api/customer/delete-account
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Account deletion request sent.',
-                      style: GoogleFonts.karla(fontSize: 13)),
-                  backgroundColor: AppColors.primaryDark,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md)),
-                ),
-              );
-            },
+            onPressed: _confirmationController.text == 'DELETE'
+                ? () => Navigator.pop(context, true)
+                : null,
             child: Text('Delete',
                 style: GoogleFonts.karla(
                     color: AppColors.error, fontWeight: FontWeight.w700)),
           ),
         ],
-      ),
-    );
-  }
+      );
 }
 
 // ─── Section Header ────────────────────────────────────────────────────────────
@@ -568,6 +708,104 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ─── Settings Tile ─────────────────────────────────────────────────────────────
+class _VisitUsCard extends StatelessWidget {
+  const _VisitUsCard();
+
+  static final _instagramUri = Uri.parse(
+    'https://www.instagram.com/bingnondocafe?utm_source=ig_web_button_share_sheet&exln=ZDNlZDc0MzIxNw==',
+  );
+  static final _facebookUri = Uri.parse(
+    'https://www.facebook.com/profile.php?id=100054493478096',
+  );
+
+  Future<void> _open(BuildContext context, Uri uri) async {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the social media page.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(color: AppColors.border),
+          boxShadow: AppShadows.card,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Follow Bingnondo Cafe',
+                style: GoogleFonts.karla(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                )),
+            const SizedBox(height: 4),
+            Text('Visit us on social media for updates and offers.',
+                style: GoogleFonts.karla(
+                  fontSize: 13,
+                  color: AppColors.textMuted,
+                )),
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                _SocialLinkButton(
+                  label: 'Instagram',
+                  icon: Icons.camera_alt_outlined,
+                  color: const Color(0xFFE1306C),
+                  onTap: () => _open(context, _instagramUri),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _SocialLinkButton(
+                  label: 'Facebook',
+                  icon: Icons.facebook,
+                  color: const Color(0xFF1877F2),
+                  onTap: () => _open(context, _facebookUri),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+}
+
+class _SocialLinkButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _SocialLinkButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: OutlinedButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, color: color, size: 20),
+          label: Text(label),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.textPrimary,
+            side: const BorderSide(color: AppColors.border),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+          ),
+        ),
+      );
+}
+
 class _SettingsTile extends StatelessWidget {
   final CustomPainter icon;
   final String label;
@@ -1311,26 +1549,26 @@ class _LockIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter _) => false;
 }
 
-class _WalletIconPainter extends CustomPainter {
+class _LegalIconPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()
+    final paint = Paint()
       ..color = AppColors.gold
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(0, size.height * 0.2, size.width, size.height * 0.7),
-            const Radius.circular(4)),
-        p);
-    canvas.drawLine(
-        Offset(0, size.height * 0.45), Offset(size.width, size.height * 0.45), p);
-    canvas.drawOval(
-        Rect.fromLTWH(size.width * 0.62, size.height * 0.52,
-            size.width * 0.28, size.height * 0.26),
-        p..style = PaintingStyle.fill..color = AppColors.gold.withOpacity(0.3));
+    final page = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.width * 0.18, size.height * 0.05,
+          size.width * 0.64, size.height * 0.9),
+      const Radius.circular(2),
+    );
+    canvas.drawRRect(page, paint);
+    for (var i = 0; i < 3; i++) {
+      final y = size.height * (0.38 + i * 0.2);
+      canvas.drawLine(Offset(size.width * 0.32, y),
+          Offset(size.width * 0.68, y), paint);
+    }
   }
 
   @override

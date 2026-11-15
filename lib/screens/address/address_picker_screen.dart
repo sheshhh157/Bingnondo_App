@@ -179,8 +179,30 @@ class _AddressPickerScreenState extends State<AddressPickerScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.deniedForever) {
+        final openSettings = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Location access is off'),
+            content: const Text(
+              'Allow Bingnondo to use your location in app settings, or continue by dragging the map.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Open Settings'),
+              ),
+            ],
+          ),
+        );
+        if (openSettings == true) await Geolocator.openAppSettings();
+        return;
+      }
+      if (permission == LocationPermission.denied) {
         _snack('Location permission denied. You can still drag the map.');
         return;
       }

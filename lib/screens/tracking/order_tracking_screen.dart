@@ -8,6 +8,7 @@ import 'package:flutter_map/flutter_map.dart'; // §1.9 rider map
 import 'package:latlong2/latlong.dart' hide Path; // §1.9 LatLng
 import '../../models/tracking_models.dart';
 import '../../services/gcash_receipt_service.dart';
+import '../../services/camera_permission_service.dart';
 import '../../services/order_tracking_provider.dart';
 import '../../services/orders_service.dart';
 import '../../services/socket_service.dart';
@@ -1928,6 +1929,9 @@ class _GcashRejectionBannerState extends State<_GcashRejectionBanner> {
   bool _uploadDone = false;
 
   Future<void> _pickImage(ImageSource source) async {
+    if (source == ImageSource.camera && !await requestCameraAccess(context)) {
+      return;
+    }
     final picked = await _picker.pickImage(
       source: source,
       imageQuality: 85,

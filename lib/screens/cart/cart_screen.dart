@@ -497,7 +497,7 @@ class _CartScreenState extends State<CartScreen>
         AppSpacing.md,
         AppSpacing.md,
         AppSpacing.md,
-        AppSpacing.md + MediaQuery.of(context).viewPadding.bottom,
+        AppSpacing.md + MediaQuery.of(context).viewPadding.bottom + 90,
       ),
       decoration: BoxDecoration(
         color: AppColors.surface,

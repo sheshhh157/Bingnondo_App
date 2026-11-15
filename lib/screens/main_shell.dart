@@ -48,7 +48,10 @@ class _MainShellState extends State<MainShell>
           tween: Tween<double>(begin: 0.85, end: 1.0), weight: 30),
     ]).animate(
         CurvedAnimation(parent: _badgeBounceCtrl, curve: Curves.easeOut));
+
   }
+
+  // ─── Navigation ────────────────────────────────────────────────────────────
 
   void _showMenu() {
     setState(() => _currentIndex = 0);
@@ -57,11 +60,14 @@ class _MainShellState extends State<MainShell>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+
+    // Cart badge bounce
     final cart = context.watch<CartProvider>();
     if (cart.totalItemCount > _prevCartCount) {
       _badgeBounceCtrl.forward(from: 0);
     }
     _prevCartCount = cart.totalItemCount;
+
   }
 
   @override
@@ -91,13 +97,29 @@ class _MainShellState extends State<MainShell>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // extendBody so the screen content draws behind the nav
+      // No bottomNavigationBar — nav lives inside the Stack.
       extendBody: true,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── App content (padded at bottom so it doesn't hide behind nav) ──
+          Positioned.fill(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _screens,
+            ),
+          ),
+
+          // ── Nav bar — inside the Stack so overlay covers it ──────────
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildNav(context),
+          ),
+
+        ],
       ),
-      bottomNavigationBar: _buildNav(context),
     );
   }
 

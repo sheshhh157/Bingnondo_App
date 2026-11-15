@@ -158,6 +158,13 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
     );
   }
 
+  void _openStaffChat() {
+    final activeOrders = context.read<OrdersProvider>().activeOrders;
+    _push(SupportChatScreen(
+      activeOrderId: activeOrders.isEmpty ? null : activeOrders.first.id,
+    ));
+  }
+
   void _goToCart() => _push(const CartScreen());
 
   void _push(Widget screen) {
@@ -209,6 +216,7 @@ class _HomeMenuScreenState extends State<HomeMenuScreen>
                   collapsedHeight: _collapsedHeaderH,
                   badgeBounce: _badgeBounce,
                   onNotifTap: () => _push(const NotificationsScreen()),
+                  onStaffMessageTap: _openStaffChat,
                 ),
               ),
               Expanded(
@@ -606,6 +614,7 @@ class _PersistentHeader extends StatelessWidget {
   final double collapsedHeight;
   final Animation<double> badgeBounce;
   final VoidCallback onNotifTap;
+  final VoidCallback onStaffMessageTap;
 
   const _PersistentHeader({
     required this.collapseRatio,
@@ -613,6 +622,7 @@ class _PersistentHeader extends StatelessWidget {
     required this.collapsedHeight,
     required this.badgeBounce,
     required this.onNotifTap,
+    required this.onStaffMessageTap,
   });
 
   double _lerp(double from, double to) =>
@@ -690,6 +700,15 @@ class _PersistentHeader extends StatelessWidget {
                     ],
                   ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline_rounded,
+                      color: Colors.white, size: 21),
+                  onPressed: onStaffMessageTap,
+                  padding: const EdgeInsets.all(6),
+                  constraints:
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                  tooltip: 'Message Staff',
+                ),
 
 
               ],
@@ -698,7 +717,7 @@ class _PersistentHeader extends StatelessWidget {
 
           // ── Brand content ─────────────────────────────────────────────
           Positioned.fill(
-            right: 40, // room for 1 icon button (notif only)
+            right: 80, // room for notification and staff message buttons
             child: isCollapsed
                 ? _CollapsedBrand(
               catSize: catSize,

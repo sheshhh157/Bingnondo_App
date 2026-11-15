@@ -34,6 +34,7 @@ import '../../services/address_history_service.dart';
 import '../../services/cart_provider.dart';
 import '../../services/cart_service.dart';
 import '../../services/business_hours_provider.dart';
+import '../../services/camera_permission_service.dart';
 import '../../services/orders_provider.dart';
 import '../../services/gcash_receipt_service.dart';
 import '../../theme/app_theme.dart';
@@ -895,6 +896,9 @@ class _GcashDetailStepState extends State<_GcashDetailStep> {
   CartProvider get cart => widget.cart;
 
   Future<void> _pickImage(ImageSource source) async {
+    if (source == ImageSource.camera && !await requestCameraAccess(context)) {
+      return;
+    }
     final picked = await _picker.pickImage(
       source:       source,
       imageQuality: 85,
